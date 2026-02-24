@@ -9,7 +9,6 @@ from typing import Any
 import yaml
 from jsonschema import Draft202012Validator
 
-
 ALLOWED_LAYERS = {"bronze", "silver", "gold"}
 
 

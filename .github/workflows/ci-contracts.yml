@@ -20,7 +20,7 @@ jobs:
       - name: Install dev dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
+          pip install -r requirements.txt
 
       - name: Lint (ruff)
         run: |
@@ -29,3 +29,16 @@ jobs:
       - name: Validate contracts
         run: |
           python ci/scripts/validate_contracts.py
+
+      - name: Fetch base branch history
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --no-tags --prune --depth=0 origin +refs/heads/*:refs/remotes/origin/*
+
+      - name: Detect contract breaking changes
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.sha }}
+        run: |
+          python ci/scripts/detect_contract_breaking_changes.py
