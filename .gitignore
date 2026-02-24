@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+.ipynb_checkpoints/
+
+data/raw/
+lakehouse/
+reports/
+
+dbt/lakehouse_dbt/target/
+dbt/lakehouse_dbt/dbt_packages/
+*.duckdb
+
+.DS_Store
