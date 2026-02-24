@@ -1,0 +1,25 @@
+dataset: gold.fct_trips_daily
+owner: analytics-engineering
+version: 1
+
+primary_key: [trip_date, vendor_id]
+
+schema:
+  - name: trip_date
+    type: date
+    nullable: false
+  - name: vendor_id
+    type: string
+    nullable: false
+  - name: trips
+    type: bigint
+    nullable: false
+  - name: total_fare
+    type: decimal(18,2)
+    nullable: false
+
+expectations:
+  - name: trips_non_negative
+    type: range
+    column: trips
+    min: 0

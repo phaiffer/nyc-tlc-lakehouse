@@ -13,3 +13,7 @@ dbt-duckdb==1.9.2
 great-expectations==0.18.19
 
 matplotlib==3.9.2
+
+pyyaml==6.0.2
+jsonschema==4.23.0
+ruff==0.9.6

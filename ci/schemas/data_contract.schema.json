@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Data Contract",
+  "type": "object",
+  "required": ["dataset", "owner", "version", "schema"],
+  "properties": {
+    "dataset": { "type": "string", "minLength": 3 },
+    "owner": { "type": "string", "minLength": 2 },
+    "version": { "type": "integer", "minimum": 1 },
+
+    "primary_key": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+
+    "watermark": { "type": "string" },
+    "late_arrival_days": { "type": "integer", "minimum": 0 },
+
+    "schema": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "type", "nullable"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "type": { "type": "string", "minLength": 1 },
+          "nullable": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      }
+    },
+
+    "expectations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "type"],
+        "properties": {
+          "name": { "type": "string" },
+          "type": { "type": "string" },
+          "columns": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "column": { "type": "string" },
+          "min": {},
+          "max": {},
+          "allowed": {
+            "type": "array",
+            "items": {}
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": false
+}

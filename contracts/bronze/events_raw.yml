@@ -1,0 +1,19 @@
+dataset: bronze.events_raw
+owner: data-platform
+version: 1
+
+schema:
+  - name: ingest_ts
+    type: timestamp
+    nullable: false
+  - name: source_file
+    type: string
+    nullable: false
+  - name: payload
+    type: string
+    nullable: false
+
+expectations:
+  - name: ingest_ts_not_null
+    type: not_null
+    columns: [ingest_ts]

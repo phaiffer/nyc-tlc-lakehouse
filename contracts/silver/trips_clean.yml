@@ -1,0 +1,39 @@
+dataset: silver.trips_clean
+owner: data-platform
+version: 1
+
+primary_key: [trip_id]
+watermark: updated_at
+late_arrival_days: 7
+
+schema:
+  - name: trip_id
+    type: string
+    nullable: false
+  - name: vendor_id
+    type: string
+    nullable: true
+  - name: pickup_ts
+    type: timestamp
+    nullable: false
+  - name: dropoff_ts
+    type: timestamp
+    nullable: false
+  - name: updated_at
+    type: timestamp
+    nullable: false
+  - name: fare_amount
+    type: decimal(18,2)
+    nullable: false
+
+expectations:
+  - name: pk_not_null
+    type: not_null
+    columns: [trip_id]
+  - name: pk_unique
+    type: unique
+    columns: [trip_id]
+  - name: fare_non_negative
+    type: range
+    column: fare_amount
+    min: 0
