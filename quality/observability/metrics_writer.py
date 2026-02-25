@@ -11,11 +11,35 @@ def _quote_identifier(identifier: str) -> str:
     return f"`{identifier.replace('`', '``')}`"
 
 
+def _quote_table_name(table_name: str) -> str:
+    if "." not in table_name:
+        return _quote_identifier(table_name)
+    namespace, table = table_name.split(".", 1)
+    return f"{_quote_identifier(namespace)}.{_quote_identifier(table)}"
+
+
 def _ensure_table_namespace(spark: SparkSession, table_name: str) -> None:
     if "." not in table_name:
         return
     namespace, _ = table_name.split(".", 1)
     spark.sql(f"CREATE DATABASE IF NOT EXISTS {_quote_identifier(namespace)}")
+
+
+def _drop_table_if_exists(spark: SparkSession, table_name: str) -> None:
+    spark.sql(f"DROP TABLE IF EXISTS {_quote_table_name(table_name)}")
+
+
+def _is_schema_conflict_error(exc: Exception) -> bool:
+    error_text = str(exc).lower()
+    markers = [
+        "incompatible",
+        "cannot cast",
+        "invalidoperationexception",
+        "failed to alter table",
+        "analysisexception",
+        "schema",
+    ]
+    return any(marker in error_text for marker in markers)
 
 
 def write_pipeline_metrics(
@@ -46,4 +70,16 @@ def write_pipeline_metrics(
     _ensure_table_namespace(spark, metrics_table)
 
     write_mode = "append" if spark.catalog.tableExists(metrics_table) else "overwrite"
-    metrics_df.write.format("delta").mode(write_mode).saveAsTable(metrics_table)
+    try:
+        metrics_df.write.format("delta").mode(write_mode).saveAsTable(metrics_table)
+    except Exception as exc:
+        if not metrics_table.startswith("quality.") or not _is_schema_conflict_error(exc):
+            raise
+
+        _drop_table_if_exists(spark, metrics_table)
+        (
+            metrics_df.write.format("delta")
+            .mode("overwrite")
+            .option("overwriteSchema", "true")
+            .saveAsTable(metrics_table)
+        )

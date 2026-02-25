@@ -10,11 +10,35 @@ def _quote_identifier(identifier: str) -> str:
     return f"`{identifier.replace('`', '``')}`"
 
 
+def _quote_table_name(table_name: str) -> str:
+    if "." not in table_name:
+        return _quote_identifier(table_name)
+    namespace, table = table_name.split(".", 1)
+    return f"{_quote_identifier(namespace)}.{_quote_identifier(table)}"
+
+
 def _ensure_table_namespace(df: DataFrame, table_name: str) -> None:
     if "." not in table_name:
         return
     namespace, _ = table_name.split(".", 1)
     df.sparkSession.sql(f"CREATE DATABASE IF NOT EXISTS {_quote_identifier(namespace)}")
+
+
+def _drop_table_if_exists(df: DataFrame, table_name: str) -> None:
+    df.sparkSession.sql(f"DROP TABLE IF EXISTS {_quote_table_name(table_name)}")
+
+
+def _is_schema_conflict_error(exc: Exception) -> bool:
+    error_text = str(exc).lower()
+    markers = [
+        "incompatible",
+        "cannot cast",
+        "invalidoperationexception",
+        "failed to alter table",
+        "analysisexception",
+        "schema",
+    ]
+    return any(marker in error_text for marker in markers)
 
 
 def write_quarantine(
@@ -28,10 +52,10 @@ def write_quarantine(
     """
     Append quarantined records into a Delta table with audit metadata columns.
     """
+    _ensure_table_namespace(quarantine_df, quarantine_table)
+
     if quarantine_df.rdd.isEmpty():
         return {"quarantined_rows": 0, "table": quarantine_table}
-
-    _ensure_table_namespace(quarantine_df, quarantine_table)
 
     enriched = (
         quarantine_df
@@ -41,6 +65,18 @@ def write_quarantine(
         .withColumn("_quarantine_ts", F.current_timestamp())
     )
 
-    enriched.write.format("delta").mode("append").saveAsTable(quarantine_table)
+    try:
+        enriched.write.format("delta").mode("append").saveAsTable(quarantine_table)
+    except Exception as exc:
+        if not quarantine_table.startswith("quality.") or not _is_schema_conflict_error(exc):
+            raise
+
+        _drop_table_if_exists(enriched, quarantine_table)
+        (
+            enriched.write.format("delta")
+            .mode("overwrite")
+            .option("overwriteSchema", "true")
+            .saveAsTable(quarantine_table)
+        )
 
     return {"quarantined_rows": enriched.count(), "table": quarantine_table}

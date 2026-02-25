@@ -1,100 +1,88 @@
 # Runbook: Local Enterprise Pipeline
 
-## Prerequisites
+## Quickstart
 
-- Linux environment
-- Java 8+ (required by Spark)
-- Python 3.11+ (project uses `.venv`)
-- Dependencies installed:
-  - `python3 -m venv .venv`
-  - `./.venv/bin/pip install -r requirements.txt`
+```bash
+# 1) Create and install venv
+python3 -m venv .venv
+./.venv/bin/pip install --upgrade pip
+./.venv/bin/pip install -r requirements.txt
+
+# 2) Download TLC parquet (January 2024 example)
+./.venv/bin/python orchestration/local/run_pipeline.py download --year 2024 --month 1
+
+# 3) Run end-to-end (no --input-parquet needed when default file exists)
+./.venv/bin/python orchestration/local/run_pipeline.py run-all --year 2024 --month 1
+
+# 4) Inspect databases/tables in the same local metastore used by the CLI
+./.venv/bin/python orchestration/local/run_pipeline.py inspect
+
+# 5) Reset tables
+./.venv/bin/python orchestration/local/run_pipeline.py reset
+```
 
 ## Local Storage Layout
 
-Deterministic local runtime paths are configured in `orchestration/local/run_pipeline.py`:
+Deterministic local runtime paths are configured by the CLI:
 
 - Spark warehouse: `.local/spark-warehouse`
 - Derby metastore: `.local/metastore_db`
 - Spark local dir: `.local/spark-local`
 
-Managed Delta tables are created automatically under warehouse namespaces:
+Managed Delta tables:
 
 - `bronze.events_raw`
 - `silver.trips_clean`
 - `gold.fct_trips_daily`
 - `quality.quarantine_records`
-- `quality.violations_summary`
 - `quality.pipeline_metrics`
+- `quality.violations_summary`
 
-## Pipeline Commands (CLI)
-
-All commands are idempotent and safe to re-run.
+## CLI Commands
 
 ```bash
-python orchestration/local/run_pipeline.py run-bronze \
-  --input-parquet data/raw/yellow_tripdata_2024-01.parquet \
-  --year 2024 --month 1
+# Download source file
+./.venv/bin/python orchestration/local/run_pipeline.py download --year 2024 --month 1
 
-python orchestration/local/run_pipeline.py run-silver --year 2024 --month 1
+# Stage-by-stage runs
+./.venv/bin/python orchestration/local/run_pipeline.py run-bronze --year 2024 --month 1
+./.venv/bin/python orchestration/local/run_pipeline.py run-silver --year 2024 --month 1
+./.venv/bin/python orchestration/local/run_pipeline.py run-gold --year 2024 --month 1
+./.venv/bin/python orchestration/local/run_pipeline.py run-quality --strict-quality
 
-python orchestration/local/run_pipeline.py run-gold --year 2024 --month 1
+# End-to-end
+./.venv/bin/python orchestration/local/run_pipeline.py run-all --year 2024 --month 1 --strict-quality
 
-python orchestration/local/run_pipeline.py run-quality --strict-quality
+# Inspect local catalog
+./.venv/bin/python orchestration/local/run_pipeline.py inspect
 
-python orchestration/local/run_pipeline.py run-all \
-  --input-parquet data/raw/yellow_tripdata_2024-01.parquet \
-  --year 2024 --month 1 \
-  --strict-quality
+# Open a matching local Spark session and inspect catalog
+./.venv/bin/python ci/scripts/open_local_spark.py
+
+# Reset (drop tables only)
+./.venv/bin/python orchestration/local/run_pipeline.py reset
+
+# Reset with schema drop
+./.venv/bin/python orchestration/local/run_pipeline.py reset --drop-schemas
 ```
-
-Optional controls:
-
-- `--max-invalid-ratio 0.001` (default)
-- `--warehouse-dir <path>`
-- `--reset` (drop stage tables before running command)
 
 ## Makefile Shortcuts
 
 ```bash
-make lint
-make contracts
-make smoke
-
-make bronze INPUT_PARQUET=data/raw/yellow_tripdata_2024-01.parquet YEAR=2024 MONTH=1
-make silver YEAR=2024 MONTH=1
-make gold YEAR=2024 MONTH=1
-make quality STRICT_QUALITY=1
-
-make run-all INPUT_PARQUET=data/raw/yellow_tripdata_2024-01.parquet YEAR=2024 MONTH=1 STRICT_QUALITY=1
-```
-
-## Reset and Cleanup
-
-Drop all pipeline tables:
-
-```bash
-python orchestration/local/run_pipeline.py reset
-# or
+make download YEAR=2024 MONTH=1
+make run-all YEAR=2024 MONTH=1
+make inspect
 make reset
-```
-
-Drop quality tables only and clean quality warehouse dirs:
-
-```bash
-python orchestration/local/run_pipeline.py clean --remove-quality-warehouse
-# or
-make clean
 ```
 
 ## Troubleshooting
 
-- `ModuleNotFoundError: delta`:
-  - install dependencies into `.venv` and run commands with `./.venv/bin/python`.
-- Spark cannot create warehouse/metastore:
-  - ensure write permissions for `.local/`.
-- `Missing required columns in Bronze input`:
-  - verify the parquet matches NYC TLC Yellow Taxi schema.
-- `Invalid ratio exceeded` / `Quality gate failed`:
-  - inspect `quality.quarantine_records` and `quality.violations_summary` for failed rules.
-- Contract/type mismatch errors:
-  - compare produced schema with `contracts/*/*.yml` and run `python ci/scripts/validate_contracts.py`.
+- `FileNotFoundError` for parquet input:
+  - run `./.venv/bin/python orchestration/local/run_pipeline.py download --year 2024 --month 1`
+  - or locate files manually: `find ~/ -name "yellow_tripdata_2024-01.parquet"`
+- SparkUI port warning (`Service 'SparkUI' could not bind on port 4040`): normal in local runs.
+- Native Hadoop warning (`Unable to load native-hadoop library`): normal for local Linux usage.
+- Metastore mismatch when using a separate `pyspark` shell:
+  - use `run_pipeline.py inspect` or `ci/scripts/open_local_spark.py` instead of a raw shell.
+- Quality table type conflict after schema drift:
+  - rerun with `run-quality --reset`; quality tables auto-drop/recreate on compatible drift errors.

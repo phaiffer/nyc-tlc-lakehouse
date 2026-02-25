@@ -18,11 +18,35 @@ def _quote_identifier(identifier: str) -> str:
     return f"`{identifier.replace('`', '``')}`"
 
 
+def _quote_table_name(table_name: str) -> str:
+    if "." not in table_name:
+        return _quote_identifier(table_name)
+    namespace, table = table_name.split(".", 1)
+    return f"{_quote_identifier(namespace)}.{_quote_identifier(table)}"
+
+
 def _ensure_table_namespace(spark: SparkSession, table_name: str) -> None:
     if "." not in table_name:
         return
     namespace, _ = table_name.split(".", 1)
     spark.sql(f"CREATE DATABASE IF NOT EXISTS {_quote_identifier(namespace)}")
+
+
+def _drop_table_if_exists(spark: SparkSession, table_name: str) -> None:
+    spark.sql(f"DROP TABLE IF EXISTS {_quote_table_name(table_name)}")
+
+
+def _is_schema_conflict_error(exc: Exception) -> bool:
+    error_text = str(exc).lower()
+    markers = [
+        "incompatible",
+        "cannot cast",
+        "invalidoperationexception",
+        "failed to alter table",
+        "analysisexception",
+        "schema",
+    ]
+    return any(marker in error_text for marker in markers)
 
 
 def _validate_columns(df: DataFrame, columns: list[str], *, label: str) -> None:
@@ -205,12 +229,24 @@ def run_quality_gate(
     summary_df = summary_df.select(*ordered_columns)
 
     _ensure_table_namespace(spark, output_table)
-    (
-        summary_df.write.format("delta")
-        .mode("overwrite")
-        .option("overwriteSchema", "true")
-        .saveAsTable(output_table)
-    )
+    try:
+        (
+            summary_df.write.format("delta")
+            .mode("overwrite")
+            .option("overwriteSchema", "true")
+            .saveAsTable(output_table)
+        )
+    except Exception as exc:
+        if not output_table.startswith("quality.") or not _is_schema_conflict_error(exc):
+            raise
+
+        _drop_table_if_exists(spark, output_table)
+        (
+            summary_df.write.format("delta")
+            .mode("overwrite")
+            .option("overwriteSchema", "true")
+            .saveAsTable(output_table)
+        )
 
     result = {
         "silver_rows": silver_rows,

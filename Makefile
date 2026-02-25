@@ -1,15 +1,17 @@
 PYTHON ?= ./.venv/bin/python
 INPUT_PARQUET ?=
-YEAR ?=
-MONTH ?=
+YEAR ?= 2024
+MONTH ?= 1
+OUTPUT_DIR ?= data/raw
 MAX_INVALID_RATIO ?= 0.001
 WAREHOUSE_DIR ?=
 STRICT_QUALITY ?= 0
 
 COMMON_ARGS = $(if $(YEAR),--year $(YEAR),) $(if $(MONTH),--month $(MONTH),) --max-invalid-ratio $(MAX_INVALID_RATIO) $(if $(WAREHOUSE_DIR),--warehouse-dir $(WAREHOUSE_DIR),)
 STRICT_QUALITY_ARG = $(if $(filter 1 true TRUE yes YES,$(STRICT_QUALITY)),--strict-quality,)
+INPUT_ARG = $(if $(INPUT_PARQUET),--input-parquet "$(INPUT_PARQUET)",)
 
-.PHONY: venv lint contracts smoke bronze silver gold quality run-all full-run clean reset
+.PHONY: venv lint contracts smoke download inspect bronze silver gold quality run-all full-run clean reset
 
 venv:
 	python3 -m venv .venv
@@ -27,9 +29,14 @@ smoke:
 	$(PYTHON) -m compileall .
 	$(PYTHON) ci/scripts/smoke_imports.py
 
+download:
+	$(PYTHON) orchestration/local/run_pipeline.py download --year $(YEAR) --month $(MONTH) --output-dir "$(OUTPUT_DIR)"
+
+inspect:
+	$(PYTHON) orchestration/local/run_pipeline.py inspect $(if $(WAREHOUSE_DIR),--warehouse-dir "$(WAREHOUSE_DIR)",)
+
 bronze:
-	@test -n "$(INPUT_PARQUET)" || (echo "INPUT_PARQUET is required" && exit 1)
-	$(PYTHON) orchestration/local/run_pipeline.py run-bronze --input-parquet "$(INPUT_PARQUET)" $(COMMON_ARGS)
+	$(PYTHON) orchestration/local/run_pipeline.py run-bronze $(INPUT_ARG) $(COMMON_ARGS)
 
 silver:
 	$(PYTHON) orchestration/local/run_pipeline.py run-silver $(COMMON_ARGS)
@@ -41,8 +48,7 @@ quality:
 	$(PYTHON) orchestration/local/run_pipeline.py run-quality $(COMMON_ARGS) $(STRICT_QUALITY_ARG)
 
 run-all:
-	@test -n "$(INPUT_PARQUET)" || (echo "INPUT_PARQUET is required" && exit 1)
-	$(PYTHON) orchestration/local/run_pipeline.py run-all --input-parquet "$(INPUT_PARQUET)" $(COMMON_ARGS) $(STRICT_QUALITY_ARG)
+	$(PYTHON) orchestration/local/run_pipeline.py run-all $(INPUT_ARG) $(COMMON_ARGS) $(STRICT_QUALITY_ARG)
 
 full-run: run-all
 
