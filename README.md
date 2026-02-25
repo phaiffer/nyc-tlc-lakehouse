@@ -114,6 +114,23 @@ This repository demonstrates:
 
 ---
 
+# How To Run Locally
+
+```bash
+./.venv/bin/python orchestration/local/run_pipeline.py run-all \
+  --input-parquet data/raw/yellow_tripdata_2024-01.parquet \
+  --year 2024 --month 1 --strict-quality
+```
+
+Useful shortcuts:
+
+- `make lint`
+- `make contracts`
+- `make smoke`
+- `make run-all INPUT_PARQUET=data/raw/yellow_tripdata_2024-01.parquet YEAR=2024 MONTH=1 STRICT_QUALITY=1`
+
+---
+
 # Author
 
 Data Engineering Portfolio Project  

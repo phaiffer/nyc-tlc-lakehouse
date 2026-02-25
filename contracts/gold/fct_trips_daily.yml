@@ -1,8 +1,10 @@
 dataset: gold.fct_trips_daily
 owner: analytics-engineering
-version: 1
+version: 2
 
 primary_key: [trip_date, vendor_id]
+watermark: trip_date
+late_arrival_days: 7
 
 schema:
   - name: trip_date
@@ -19,7 +21,17 @@ schema:
     nullable: false
 
 expectations:
+  - name: required_not_null
+    type: not_null
+    columns: [trip_date, vendor_id, trips, total_fare]
+  - name: pk_unique
+    type: unique
+    columns: [trip_date, vendor_id]
   - name: trips_non_negative
     type: range
     column: trips
+    min: 0
+  - name: fare_non_negative
+    type: range
+    column: total_fare
     min: 0

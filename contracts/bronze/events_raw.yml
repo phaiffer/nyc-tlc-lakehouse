@@ -1,6 +1,6 @@
 dataset: bronze.events_raw
 owner: data-platform
-version: 1
+version: 2
 
 schema:
   - name: ingest_ts
@@ -9,11 +9,65 @@ schema:
   - name: source_file
     type: string
     nullable: false
-  - name: payload
+  - name: VendorID
+    type: int
+    nullable: true
+  - name: tpep_pickup_datetime
+    type: timestamp
+    nullable: true
+  - name: tpep_dropoff_datetime
+    type: timestamp
+    nullable: true
+  - name: passenger_count
+    type: bigint
+    nullable: true
+  - name: trip_distance
+    type: double
+    nullable: true
+  - name: RatecodeID
+    type: bigint
+    nullable: true
+  - name: store_and_fwd_flag
     type: string
-    nullable: false
+    nullable: true
+  - name: PULocationID
+    type: int
+    nullable: true
+  - name: DOLocationID
+    type: int
+    nullable: true
+  - name: payment_type
+    type: bigint
+    nullable: true
+  - name: fare_amount
+    type: double
+    nullable: true
+  - name: extra
+    type: double
+    nullable: true
+  - name: mta_tax
+    type: double
+    nullable: true
+  - name: tip_amount
+    type: double
+    nullable: true
+  - name: tolls_amount
+    type: double
+    nullable: true
+  - name: improvement_surcharge
+    type: double
+    nullable: true
+  - name: total_amount
+    type: double
+    nullable: true
+  - name: congestion_surcharge
+    type: double
+    nullable: true
+  - name: Airport_fee
+    type: double
+    nullable: true
 
 expectations:
-  - name: ingest_ts_not_null
+  - name: required_not_null
     type: not_null
-    columns: [ingest_ts]
+    columns: [ingest_ts, source_file]

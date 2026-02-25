@@ -1,6 +1,6 @@
 dataset: silver.trips_clean
 owner: data-platform
-version: 1
+version: 2
 
 primary_key: [trip_id]
 watermark: updated_at
@@ -19,21 +19,34 @@ schema:
   - name: dropoff_ts
     type: timestamp
     nullable: false
+  - name: pickup_date
+    type: date
+    nullable: false
+  - name: trip_distance
+    type: double
+    nullable: false
   - name: updated_at
     type: timestamp
     nullable: false
   - name: fare_amount
     type: decimal(18,2)
     nullable: false
+  - name: passenger_count
+    type: bigint
+    nullable: true
 
 expectations:
-  - name: pk_not_null
+  - name: required_not_null
     type: not_null
-    columns: [trip_id]
+    columns: [trip_id, pickup_ts, dropoff_ts, pickup_date, updated_at]
   - name: pk_unique
     type: unique
     columns: [trip_id]
   - name: fare_non_negative
     type: range
     column: fare_amount
+    min: 0
+  - name: trip_distance_non_negative
+    type: range
+    column: trip_distance
     min: 0

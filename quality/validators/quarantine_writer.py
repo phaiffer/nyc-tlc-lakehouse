@@ -6,6 +6,17 @@ from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
 
+def _quote_identifier(identifier: str) -> str:
+    return f"`{identifier.replace('`', '``')}`"
+
+
+def _ensure_table_namespace(df: DataFrame, table_name: str) -> None:
+    if "." not in table_name:
+        return
+    namespace, _ = table_name.split(".", 1)
+    df.sparkSession.sql(f"CREATE DATABASE IF NOT EXISTS {_quote_identifier(namespace)}")
+
+
 def write_quarantine(
     quarantine_df: DataFrame,
     *,
@@ -19,6 +30,8 @@ def write_quarantine(
     """
     if quarantine_df.rdd.isEmpty():
         return {"quarantined_rows": 0, "table": quarantine_table}
+
+    _ensure_table_namespace(quarantine_df, quarantine_table)
 
     enriched = (
         quarantine_df

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import reduce
 from typing import Any
 
 from pyspark.sql import DataFrame
@@ -91,7 +92,7 @@ def enforce_contract(
             continue
 
     if predicates:
-        is_valid_expr = F.reduce(lambda a, b: a & b, predicates)
+        is_valid_expr = reduce(lambda a, b: a & b, predicates)
         staged = df.withColumn("__is_valid", is_valid_expr)
         valid_df = staged.filter(F.col("__is_valid")).drop("__is_valid")
         quarantine_df = staged.filter(~F.col("__is_valid")).drop("__is_valid")
@@ -121,12 +122,10 @@ def enforce_contract(
 
     if invalid_ratio > max_invalid_ratio:
         raise ValueError(
-            (
             "Invalid ratio exceeded: "
             f"invalid_ratio={invalid_ratio:.6f} "
             f"threshold={max_invalid_ratio:.6f}"
-            )
-            )
+        )
 
     summary = {
         "dataset": contract.dataset,

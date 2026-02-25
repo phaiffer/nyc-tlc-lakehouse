@@ -6,6 +6,12 @@ data/raw/
 lakehouse/
 reports/
 
+metastore_db/
+.local/
+derby.log
+dbt/lakehouse_dbt/
+notebooks/spark-warehouse
+
 dbt/lakehouse_dbt/target/
 dbt/lakehouse_dbt/dbt_packages/
 *.duckdb

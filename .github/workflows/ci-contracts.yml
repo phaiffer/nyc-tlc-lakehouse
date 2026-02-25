@@ -30,6 +30,14 @@ jobs:
         run: |
           python ci/scripts/validate_contracts.py
 
+      - name: Compile all Python files
+        run: |
+          python -m compileall .
+
+      - name: Smoke imports
+        run: |
+          python ci/scripts/smoke_imports.py
+
       - name: Fetch base branch history
         if: github.event_name == 'pull_request'
         run: |
