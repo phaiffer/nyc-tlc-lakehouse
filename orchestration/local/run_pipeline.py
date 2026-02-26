@@ -21,6 +21,7 @@ from pipelines.common.local_delta_writer import (  # noqa: E402
     is_schema_conflict_error,
     write_delta_table_safe,
 )
+from pipelines.common.schema_normalizer import normalize_bronze_schema  # noqa: E402
 from pipelines.gold_marts.run_gold_enforced import run_gold_enforced  # noqa: E402
 from pipelines.silver_transform.run_silver_enforced import run_silver_enforced  # noqa: E402
 from quality.validators.quality_gate import run_quality_gate  # noqa: E402
@@ -31,16 +32,6 @@ GOLD_TABLE = "gold.fct_trips_daily"
 QUARANTINE_TABLE = "quality.quarantine_records"
 METRICS_TABLE = "quality.pipeline_metrics"
 VIOLATIONS_TABLE = "quality.violations_summary"
-BRONZE_FIXED_COLUMN_TYPES = {
-    "VendorID": "int",
-    "passenger_count": "bigint",
-    "RatecodeID": "bigint",
-    "payment_type": "bigint",
-    "PULocationID": "int",
-    "DOLocationID": "int",
-    "tpep_pickup_datetime": "timestamp",
-    "tpep_dropoff_datetime": "timestamp",
-}
 
 QUALITY_TABLES = [QUARANTINE_TABLE, METRICS_TABLE, VIOLATIONS_TABLE]
 ALL_TABLES = [
@@ -391,53 +382,6 @@ def _apply_optional_month_filter(df, *, year: int | None, month: int | None):
     )
 
 
-def _cast_timestamp_ntz_columns_to_timestamp(df):
-    timestamp_ntz_columns = [
-        field.name for field in df.schema.fields if field.dataType.simpleString() == "timestamp_ntz"
-    ]
-    if not timestamp_ntz_columns:
-        return df, []
-
-    timestamp_ntz_column_set = set(timestamp_ntz_columns)
-    normalized_df = df.select(
-        *[
-            F.col(column_name).cast("timestamp").alias(column_name)
-            if column_name in timestamp_ntz_column_set
-            else F.col(column_name)
-            for column_name in df.columns
-        ]
-    )
-    return normalized_df, timestamp_ntz_columns
-
-
-def _cast_columns_to_fixed_types(df, *, column_types: dict[str, str]):
-    casted_columns: list[str] = []
-    projected_columns = []
-
-    for column_name in df.columns:
-        target_type = column_types.get(column_name)
-        if target_type is None:
-            projected_columns.append(F.col(column_name))
-            continue
-
-        casted_columns.append(f"{column_name}:{target_type}")
-        projected_columns.append(F.col(column_name).cast(target_type).alias(column_name))
-
-    if not casted_columns:
-        return df, []
-
-    return df.select(*projected_columns), casted_columns
-
-
-def _normalize_bronze_input_schema(df):
-    normalized_df, casted_timestamp_ntz_columns = _cast_timestamp_ntz_columns_to_timestamp(df)
-    canonical_df, casted_fixed_columns = _cast_columns_to_fixed_types(
-        normalized_df,
-        column_types=BRONZE_FIXED_COLUMN_TYPES,
-    )
-    return canonical_df, casted_timestamp_ntz_columns, casted_fixed_columns
-
-
 def _run_bronze(
     spark: SparkSession,
     *,
@@ -450,11 +394,9 @@ def _run_bronze(
         _drop_tables(spark, [BRONZE_TABLE])
 
     raw_df = spark.read.parquet(str(input_parquet.resolve()))
-    (
-        canonical_df,
-        casted_timestamp_ntz_columns,
-        casted_fixed_columns,
-    ) = _normalize_bronze_input_schema(raw_df)
+    canonical_df, schema_report = normalize_bronze_schema(raw_df)
+    casted_timestamp_ntz_columns = schema_report.casted_timestamp_ntz_columns
+    casted_fixed_columns = schema_report.casted_fixed_columns
     if casted_timestamp_ntz_columns:
         print(
             "Cast timestamp_ntz columns to timestamp for local Hive metastore compatibility:"

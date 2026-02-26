@@ -68,6 +68,13 @@ def write_delta_table_safe(
     recreate_on_schema_mismatch: bool = False,
     recreate_on_schema_conflict: bool = False,
 ) -> None:
+    """
+    Write managed Delta tables with explicit schema controls for local metastore stability.
+
+    The writer always disables implicit schema evolution (`mergeSchema=false`) and supports
+    controlled recreate paths (`force_recreate` / `recreate_on_schema_*`) to avoid Hive
+    metastore drift on reruns.
+    """
     if mode not in {"overwrite", "append"}:
         raise ValueError(f"Unsupported write mode: {mode}")
 
@@ -95,7 +102,7 @@ def write_delta_table_safe(
     if effective_mode == "append" and not table_exists:
         effective_mode = "overwrite"
 
-    writer = source_df.write.format("delta").mode(effective_mode)
+    writer = source_df.write.format("delta").mode(effective_mode).option("mergeSchema", "false")
     if overwrite_schema and effective_mode == "overwrite":
         writer = writer.option("overwriteSchema", "true")
 
@@ -110,6 +117,7 @@ def write_delta_table_safe(
         (
             source_df.write.format("delta")
             .mode("overwrite")
+            .option("mergeSchema", "false")
             .option("overwriteSchema", "true")
             .saveAsTable(table_name)
         )

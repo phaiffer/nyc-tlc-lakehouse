@@ -75,23 +75,39 @@ def _build_merge_condition(primary_key: list[str]) -> str:
     )
 
 
-def _add_missing_target_columns(
-    spark: SparkSession,
-    *,
-    target_table: str,
-    source_df: DataFrame,
-) -> None:
-    target_schema = spark.table(target_table).schema
-    target_columns = {field.name for field in target_schema.fields}
-    missing_columns = [
-        field for field in source_df.schema.fields if field.name not in target_columns
-    ]
+def _schema_signature(df: DataFrame) -> dict[str, str]:
+    return {field.name: field.dataType.simpleString() for field in df.schema.fields}
 
-    for field in missing_columns:
-        spark.sql(
-            f"ALTER TABLE {target_table} "
-            f"ADD COLUMNS ({_quote_identifier(field.name)} {field.dataType.simpleString()})"
-        )
+
+def _ensure_merge_schema_compatible(
+    *,
+    source_df: DataFrame,
+    target_df: DataFrame,
+    target_table: str,
+) -> None:
+    source_signature = _schema_signature(source_df)
+    target_signature = _schema_signature(target_df)
+    if source_signature == target_signature:
+        return
+
+    source_columns = set(source_signature)
+    target_columns = set(target_signature)
+
+    missing_in_target = sorted(source_columns - target_columns)
+    extra_in_target = sorted(target_columns - source_columns)
+    type_mismatches = sorted(
+        [
+            f"{column}: source={source_signature[column]} target={target_signature[column]}"
+            for column in sorted(source_columns & target_columns)
+            if source_signature[column] != target_signature[column]
+        ]
+    )
+
+    raise ValueError(
+        "Schema mismatch detected for incremental merge; implicit Delta schema evolution is "
+        f"disabled. target_table={target_table}, missing_in_target={missing_in_target}, "
+        f"extra_in_target={extra_in_target}, type_mismatches={type_mismatches}"
+    )
 
 
 def _merge_with_delta_api(
@@ -205,13 +221,13 @@ def incremental_merge(
     elif rows_deduped == 0:
         merged_estimate = 0
     else:
-        _add_missing_target_columns(
-            spark,
-            target_table=target_table,
+        _ensure_merge_schema_compatible(
             source_df=deduped_source_df,
+            target_df=spark.table(target_table),
+            target_table=target_table,
         )
         merge_condition = _build_merge_condition(primary_key)
-        spark.conf.set("spark.databricks.delta.schema.autoMerge.enabled", "true")
+        spark.conf.set("spark.databricks.delta.schema.autoMerge.enabled", "false")
 
         if DeltaTable is not None:
             _merge_with_delta_api(
