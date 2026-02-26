@@ -26,10 +26,10 @@ def write_pipeline_metrics(
     metrics_df = spark.createDataFrame(
         [(run_id, pipeline_name, dataset, int(contract_version), metrics_json)],
         schema=["run_id", "pipeline_name", "dataset", "contract_version", "metrics_json"],
-    ).withColumn("_ts", F.current_timestamp().cast("timestamp"))
+    ).withColumn("run_ts", F.current_timestamp().cast("timestamp"))
 
     ordered_columns = [
-        "_ts",
+        "run_ts",
         "run_id",
         "pipeline_name",
         "dataset",

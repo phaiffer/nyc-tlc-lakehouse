@@ -37,16 +37,40 @@ schema:
 
 expectations:
   - name: required_not_null
+    rule_id: SLV001
+    severity: error
     type: not_null
     columns: [trip_id, pickup_ts, dropoff_ts, pickup_date, updated_at]
   - name: pk_unique
+    rule_id: SLV002
+    severity: error
     type: unique
     columns: [trip_id]
   - name: fare_non_negative
+    rule_id: SLV003
+    severity: error
     type: range
     column: fare_amount
     min: 0
   - name: trip_distance_non_negative
+    rule_id: SLV004
+    severity: error
     type: range
     column: trip_distance
     min: 0
+  - name: invalid_pickup_date_window
+    rule_id: QG001
+    severity: error
+    type: quality_gate
+  - name: non_positive_trip_duration
+    rule_id: QG002
+    severity: error
+    type: quality_gate
+  - name: negative_fare_or_distance
+    rule_id: QG003
+    severity: error
+    type: quality_gate
+  - name: pk_duplicates_detected
+    rule_id: QG004
+    severity: warn
+    type: quality_gate

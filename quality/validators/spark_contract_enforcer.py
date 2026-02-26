@@ -25,6 +25,20 @@ def _spark_schema_types(schema: StructType) -> dict[str, str]:
     return {field.name: field.dataType.simpleString() for field in schema.fields}
 
 
+def _normalize_severity(value: Any) -> str:
+    severity = str(value or "error").strip().lower()
+    if severity not in {"error", "warn", "info"}:
+        return "error"
+    return severity
+
+
+def _build_first_failure_array(rules: list[dict[str, Any]], *, key: str):
+    return F.array_remove(
+        F.array(*[F.when(rule["failed_expr"], F.lit(str(rule[key]))) for rule in rules]),
+        F.lit(None),
+    )
+
+
 def enforce_contract(
     df: DataFrame,
     contract: DataContract,
@@ -62,26 +76,52 @@ def enforce_contract(
     if mismatches:
         raise ValueError(f"Type mismatches found: {mismatches}")
 
-    # 2) Row-level expectations -> build boolean predicate list
-    predicates = []
+    # 2) Row-level expectations (severity-aware)
+    expectation_rules: list[dict[str, Any]] = []
     for rule in contract.expectations:
         rule_type = str(rule.get("type", "")).strip().lower()
+        rule_name = str(rule.get("name", "")).strip()
+        rule_id = str(rule.get("rule_id", "")).strip() or rule_name
+        severity = _normalize_severity(rule.get("severity"))
 
         if rule_type == "not_null":
-            for col_name in rule.get("columns", []):
-                predicates.append(F.col(col_name).isNotNull())
+            not_null_columns = [str(col_name) for col_name in rule.get("columns", [])]
+            if not not_null_columns:
+                continue
+
+            failed_expr = reduce(
+                lambda left, right: left | right,
+                [F.col(col_name).isNull() for col_name in not_null_columns],
+            )
+            expectation_rules.append(
+                {
+                    "rule_id": rule_id,
+                    "rule_name": rule_name,
+                    "severity": severity,
+                    "reason_code": "not_null_violation",
+                    "failed_expr": failed_expr,
+                }
+            )
 
         elif rule_type == "range":
             col_name = str(rule.get("column"))
             min_value = rule.get("min")
             max_value = rule.get("max")
 
-            p = F.col(col_name).isNotNull()
+            failed_expr = F.col(col_name).isNull()
             if min_value is not None:
-                p = p & (F.col(col_name) >= F.lit(min_value))
+                failed_expr = failed_expr | (F.col(col_name) < F.lit(min_value))
             if max_value is not None:
-                p = p & (F.col(col_name) <= F.lit(max_value))
-            predicates.append(p)
+                failed_expr = failed_expr | (F.col(col_name) > F.lit(max_value))
+            expectation_rules.append(
+                {
+                    "rule_id": rule_id,
+                    "rule_name": rule_name,
+                    "severity": severity,
+                    "reason_code": "range_violation",
+                    "failed_expr": failed_expr,
+                }
+            )
 
         elif rule_type == "unique":
             # Uniqueness is checked separately for PK (below).
@@ -91,11 +131,43 @@ def enforce_contract(
             # Unknown rules are ignored (best-effort). You can tighten this later.
             continue
 
-    if predicates:
-        is_valid_expr = reduce(lambda a, b: a & b, predicates)
-        staged = df.withColumn("__is_valid", is_valid_expr)
-        valid_df = staged.filter(F.col("__is_valid")).drop("__is_valid")
-        quarantine_df = staged.filter(~F.col("__is_valid")).drop("__is_valid")
+    error_rules = [rule for rule in expectation_rules if rule["severity"] == "error"]
+    non_error_rules = [rule for rule in expectation_rules if rule["severity"] != "error"]
+
+    if error_rules:
+        failed_rule_ids = _build_first_failure_array(error_rules, key="rule_id")
+        failed_rule_names = _build_first_failure_array(error_rules, key="rule_name")
+        failed_reason_codes = _build_first_failure_array(error_rules, key="reason_code")
+        failed_severities = _build_first_failure_array(error_rules, key="severity")
+
+        staged = (
+            df.withColumn("__failed_rule_ids", failed_rule_ids)
+            .withColumn("__failed_rule_names", failed_rule_names)
+            .withColumn("__failed_reason_codes", failed_reason_codes)
+            .withColumn("__failed_severities", failed_severities)
+            .withColumn("__is_error_invalid", F.size(F.col("__failed_rule_ids")) > F.lit(0))
+        )
+        valid_df = staged.filter(~F.col("__is_error_invalid")).drop(
+            "__failed_rule_ids",
+            "__failed_rule_names",
+            "__failed_reason_codes",
+            "__failed_severities",
+            "__is_error_invalid",
+        )
+        quarantine_df = (
+            staged.filter(F.col("__is_error_invalid"))
+            .withColumn("rule_id", F.element_at(F.col("__failed_rule_ids"), F.lit(1)))
+            .withColumn("rule_name", F.element_at(F.col("__failed_rule_names"), F.lit(1)))
+            .withColumn("reason_code", F.element_at(F.col("__failed_reason_codes"), F.lit(1)))
+            .withColumn("severity", F.element_at(F.col("__failed_severities"), F.lit(1)))
+            .drop(
+                "__failed_rule_ids",
+                "__failed_rule_names",
+                "__failed_reason_codes",
+                "__failed_severities",
+                "__is_error_invalid",
+            )
+        )
     else:
         valid_df = df
         quarantine_df = df.limit(0)
@@ -116,6 +188,22 @@ def enforce_contract(
     invalid_count = quarantine_df.count()
     invalid_ratio = (invalid_count / total_count) if total_count else 0.0
 
+    warn_count = 0
+    info_count = 0
+    for severity_name in ("warn", "info"):
+        severity_rules = [
+            rule["failed_expr"] for rule in non_error_rules if rule["severity"] == severity_name
+        ]
+        if severity_rules:
+            combined_expr = reduce(lambda left, right: left | right, severity_rules)
+            severity_count = df.filter(combined_expr).count()
+        else:
+            severity_count = 0
+        if severity_name == "warn":
+            warn_count = severity_count
+        else:
+            info_count = severity_count
+
     if invalid_ratio > max_invalid_ratio:
         raise ValueError(
             "Invalid ratio exceeded: "
@@ -131,6 +219,8 @@ def enforce_contract(
         "invalid_ratio": invalid_ratio,
         "pk_checked": bool(pk_cols),
         "pk_violations": pk_violations,
+        "warn_count": warn_count,
+        "info_count": info_count,
     }
 
     return EnforcementResult(valid_df=valid_df, quarantine_df=quarantine_df, summary=summary)

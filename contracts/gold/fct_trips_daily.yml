@@ -22,16 +22,24 @@ schema:
 
 expectations:
   - name: required_not_null
+    rule_id: GLD001
+    severity: error
     type: not_null
     columns: [trip_date, vendor_id, trips, total_fare]
   - name: pk_unique
+    rule_id: GLD002
+    severity: error
     type: unique
     columns: [trip_date, vendor_id]
   - name: trips_non_negative
+    rule_id: GLD003
+    severity: error
     type: range
     column: trips
     min: 0
   - name: fare_non_negative
+    rule_id: GLD004
+    severity: error
     type: range
     column: total_fare
     min: 0

@@ -69,5 +69,7 @@ schema:
 
 expectations:
   - name: required_not_null
+    rule_id: BR001
+    severity: error
     type: not_null
     columns: [ingest_ts, source_file]

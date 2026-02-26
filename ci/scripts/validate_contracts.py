@@ -10,6 +10,7 @@ import yaml
 from jsonschema import Draft202012Validator
 
 ALLOWED_LAYERS = {"bronze", "silver", "gold"}
+ALLOWED_SEVERITIES = {"error", "warn", "info"}
 
 
 @dataclass(frozen=True)
@@ -103,6 +104,30 @@ def _semantic_checks(cf: ContractFile) -> list[str]:
 
     if cf.layer == "silver" and watermark is None:
         errors.append("silver contract should define watermark for incremental processing")
+
+    expectations = c.get("expectations", [])
+    if isinstance(expectations, list):
+        for index, rule in enumerate(expectations):
+            if not isinstance(rule, dict):
+                errors.append(f"expectations[{index}] must be an object")
+                continue
+
+            rule_name = str(rule.get("name", "")).strip()
+            if not rule_name:
+                errors.append(f"expectations[{index}].name must be a non-empty string")
+
+            severity = rule.get("severity")
+            if severity is not None:
+                normalized = str(severity).strip().lower()
+                if normalized not in ALLOWED_SEVERITIES:
+                    errors.append(
+                        f"expectations[{index}].severity must be one of "
+                        f"{sorted(ALLOWED_SEVERITIES)}"
+                    )
+
+            rule_id = rule.get("rule_id")
+            if rule_id is not None and not str(rule_id).strip():
+                errors.append(f"expectations[{index}].rule_id must not be empty when provided")
 
     return errors
 

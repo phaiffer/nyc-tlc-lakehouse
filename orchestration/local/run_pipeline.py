@@ -4,6 +4,7 @@ import argparse
 import shutil
 import sys
 import urllib.request
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,6 +25,7 @@ from pipelines.common.local_delta_writer import (  # noqa: E402
 from pipelines.common.schema_normalizer import normalize_bronze_schema  # noqa: E402
 from pipelines.gold_marts.run_gold_enforced import run_gold_enforced  # noqa: E402
 from pipelines.silver_transform.run_silver_enforced import run_silver_enforced  # noqa: E402
+from quality.validators.contract_loader import load_contract_by_dataset  # noqa: E402
 from quality.validators.quality_gate import run_quality_gate  # noqa: E402
 
 BRONZE_TABLE = "bronze.events_raw"
@@ -495,12 +497,25 @@ def _run_quality(
     *,
     max_invalid_ratio: float,
     strict_quality: bool,
+    year: int | None,
+    month: int | None,
     reset: bool,
 ) -> None:
     if reset:
         _drop_tables(spark, [VIOLATIONS_TABLE])
 
     _ensure_schema_exists(spark, "quality")
+    contract = load_contract_by_dataset(REPO_ROOT, SILVER_TABLE)
+    quality_rule_configs = {
+        str(rule.get("name")): {
+            "rule_id": str(rule.get("rule_id", rule.get("name"))),
+            "severity": str(rule.get("severity", "error")).lower(),
+        }
+        for rule in contract.expectations
+        if str(rule.get("type", "")).strip().lower() in {"quality_gate", "quality_rule"}
+    }
+    run_id = str(uuid.uuid4())
+    run_ts = datetime.now(tz=timezone.utc).replace(tzinfo=None)
 
     try:
         result = run_quality_gate(
@@ -510,6 +525,13 @@ def _run_quality(
             output_table=VIOLATIONS_TABLE,
             thresholds={"max_invalid_ratio": max_invalid_ratio},
             strict=strict_quality,
+            dataset=contract.dataset,
+            run_id=run_id,
+            run_ts=run_ts,
+            window_year=year,
+            window_month=month,
+            contract_version=contract.version,
+            rule_configs=quality_rule_configs,
         )
     except Exception as exc:
         if not is_schema_conflict_error(exc):
@@ -524,6 +546,13 @@ def _run_quality(
             output_table=VIOLATIONS_TABLE,
             thresholds={"max_invalid_ratio": max_invalid_ratio},
             strict=strict_quality,
+            dataset=contract.dataset,
+            run_id=run_id,
+            run_ts=run_ts,
+            window_year=year,
+            window_month=month,
+            contract_version=contract.version,
+            rule_configs=quality_rule_configs,
         )
 
     print("Quality table ready:", VIOLATIONS_TABLE)
@@ -773,6 +802,8 @@ def main() -> None:
                 spark,
                 max_invalid_ratio=args.max_invalid_ratio,
                 strict_quality=args.strict_quality,
+                year=args.year,
+                month=args.month,
                 reset=args.reset,
             )
             return
@@ -808,6 +839,8 @@ def main() -> None:
                 spark,
                 max_invalid_ratio=args.max_invalid_ratio,
                 strict_quality=args.strict_quality,
+                year=args.year,
+                month=args.month,
                 reset=False,
             )
             return

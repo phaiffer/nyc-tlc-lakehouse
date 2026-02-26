@@ -39,7 +39,12 @@
         "required": ["name", "type"],
         "properties": {
           "name": { "type": "string" },
+          "rule_id": { "type": "string" },
           "type": { "type": "string" },
+          "severity": {
+            "type": "string",
+            "enum": ["error", "warn", "info"]
+          },
           "columns": {
             "type": "array",
             "items": { "type": "string" }

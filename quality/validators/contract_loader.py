@@ -6,6 +6,8 @@ from typing import Any
 
 import yaml
 
+ALLOWED_RULE_SEVERITIES = {"error", "warn", "info"}
+
 
 @dataclass(frozen=True)
 class ContractColumn:
@@ -24,6 +26,30 @@ class DataContract:
     watermark: str | None
     late_arrival_days: int | None
     expectations: list[dict[str, Any]]
+
+
+def _normalize_expectation(raw_rule: dict[str, Any]) -> dict[str, Any]:
+    normalized_rule = dict(raw_rule)
+
+    rule_name = str(normalized_rule.get("name", "")).strip()
+    if not rule_name:
+        raise ValueError("Expectation rule must include a non-empty 'name'")
+
+    severity = str(normalized_rule.get("severity", "error")).strip().lower()
+    if not severity:
+        severity = "error"
+    if severity not in ALLOWED_RULE_SEVERITIES:
+        raise ValueError(
+            f"Expectation '{rule_name}' has unsupported severity='{severity}'. "
+            f"Allowed values: {sorted(ALLOWED_RULE_SEVERITIES)}"
+        )
+
+    rule_id = str(normalized_rule.get("rule_id", "")).strip() or rule_name
+
+    normalized_rule["name"] = rule_name
+    normalized_rule["severity"] = severity
+    normalized_rule["rule_id"] = rule_id
+    return normalized_rule
 
 
 def load_contract_by_dataset(repo_root: Path, dataset: str) -> DataContract:
@@ -57,6 +83,16 @@ def load_contract_by_dataset(repo_root: Path, dataset: str) -> DataContract:
                 )
             )
 
+        raw_expectations = list(payload.get("expectations", []))
+        expectations: list[dict[str, Any]] = []
+        for raw_expectation in raw_expectations:
+            if not isinstance(raw_expectation, dict):
+                raise ValueError(
+                    f"Contract '{dataset}' contains a non-mapping expectation entry: "
+                    f"{raw_expectation!r}"
+                )
+            expectations.append(_normalize_expectation(raw_expectation))
+
         return DataContract(
             dataset=str(payload["dataset"]),
             owner=str(payload["owner"]),
@@ -67,7 +103,7 @@ def load_contract_by_dataset(repo_root: Path, dataset: str) -> DataContract:
             late_arrival_days=int(payload["late_arrival_days"])
             if payload.get("late_arrival_days") is not None
             else None,
-            expectations=list(payload.get("expectations", [])),
+            expectations=expectations,
         )
 
     raise FileNotFoundError(f"Contract not found for dataset='{dataset}'")

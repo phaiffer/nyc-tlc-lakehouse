@@ -26,11 +26,21 @@ def write_quarantine(
     if quarantine_df.rdd.isEmpty():
         return {"quarantined_rows": 0, "table": quarantine_table}
 
+    enriched = quarantine_df
+    if "reason_code" not in enriched.columns:
+        enriched = enriched.withColumn("reason_code", F.lit("contract_violation"))
+    if "rule_id" not in enriched.columns:
+        enriched = enriched.withColumn("rule_id", F.lit("contract_violation"))
+    if "rule_name" not in enriched.columns:
+        enriched = enriched.withColumn("rule_name", F.lit("contract_violation"))
+    if "severity" not in enriched.columns:
+        enriched = enriched.withColumn("severity", F.lit("error"))
+
     enriched = (
-        quarantine_df.withColumn("_quarantine_dataset", F.lit(dataset))
-        .withColumn("_quarantine_contract_version", F.lit(contract_version))
-        .withColumn("_quarantine_run_id", F.lit(run_id))
-        .withColumn("_quarantine_ts", F.current_timestamp().cast("timestamp"))
+        enriched.withColumn("dataset", F.lit(dataset))
+        .withColumn("contract_version", F.lit(int(contract_version)))
+        .withColumn("run_id", F.lit(run_id))
+        .withColumn("run_ts", F.current_timestamp().cast("timestamp"))
     )
 
     spark = enriched.sparkSession
