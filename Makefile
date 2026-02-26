@@ -11,7 +11,7 @@ COMMON_ARGS = $(if $(YEAR),--year $(YEAR),) $(if $(MONTH),--month $(MONTH),) --m
 STRICT_QUALITY_ARG = $(if $(filter 1 true TRUE yes YES,$(STRICT_QUALITY)),--strict-quality,)
 INPUT_ARG = $(if $(INPUT_PARQUET),--input-parquet "$(INPUT_PARQUET)",)
 
-.PHONY: venv lint contracts smoke download inspect bronze silver gold quality run-all full-run clean reset
+.PHONY: venv lint contracts smoke local-smoke download inspect bronze silver gold quality run-all full-run clean reset
 
 venv:
 	python3 -m venv .venv
@@ -28,6 +28,9 @@ contracts:
 smoke:
 	$(PYTHON) -m compileall .
 	$(PYTHON) ci/scripts/smoke_imports.py
+
+local-smoke:
+	YEAR=$(YEAR) MONTH=$(MONTH) MAX_INVALID_RATIO=$(MAX_INVALID_RATIO) WAREHOUSE_DIR="$(WAREHOUSE_DIR)" INPUT_PARQUET="$(INPUT_PARQUET)" ./scripts/local_smoke_test.sh
 
 download:
 	$(PYTHON) orchestration/local/run_pipeline.py download --year $(YEAR) --month $(MONTH) --output-dir "$(OUTPUT_DIR)"

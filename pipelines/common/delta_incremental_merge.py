@@ -6,6 +6,8 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 
+from pipelines.common.local_delta_writer import write_delta_table_safe
+
 try:
     from delta.tables import DeltaTable
 except ImportError:  # pragma: no cover - fallback path is tested by runtime.
@@ -194,7 +196,13 @@ def incremental_merge(
     rows_deduped = deduped_source_df.count()
 
     if not table_exists:
-        deduped_source_df.write.format("delta").mode("overwrite").saveAsTable(target_table)
+        write_delta_table_safe(
+            spark,
+            table_name=target_table,
+            source_df=deduped_source_df,
+            mode="overwrite",
+            overwrite_schema=True,
+        )
         merged_estimate = rows_deduped
     elif rows_deduped == 0:
         merged_estimate = 0

@@ -6,47 +6,19 @@ from typing import Any
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
+from pipelines.common.local_delta_writer import (
+    drop_table_if_exists,
+    ensure_table_namespace,
+    is_schema_conflict_error,
+    write_delta_table_safe,
+)
+
 _DEFAULT_THRESHOLDS = {
     "invalid_pickup_date_window": 0,
     "non_positive_trip_duration": 0,
     "negative_fare_or_distance": 0,
     "pk_duplicates_detected": 0,
 }
-
-
-def _quote_identifier(identifier: str) -> str:
-    return f"`{identifier.replace('`', '``')}`"
-
-
-def _quote_table_name(table_name: str) -> str:
-    if "." not in table_name:
-        return _quote_identifier(table_name)
-    namespace, table = table_name.split(".", 1)
-    return f"{_quote_identifier(namespace)}.{_quote_identifier(table)}"
-
-
-def _ensure_table_namespace(spark: SparkSession, table_name: str) -> None:
-    if "." not in table_name:
-        return
-    namespace, _ = table_name.split(".", 1)
-    spark.sql(f"CREATE DATABASE IF NOT EXISTS {_quote_identifier(namespace)}")
-
-
-def _drop_table_if_exists(spark: SparkSession, table_name: str) -> None:
-    spark.sql(f"DROP TABLE IF EXISTS {_quote_table_name(table_name)}")
-
-
-def _is_schema_conflict_error(exc: Exception) -> bool:
-    error_text = str(exc).lower()
-    markers = [
-        "incompatible",
-        "cannot cast",
-        "invalidoperationexception",
-        "failed to alter table",
-        "analysisexception",
-        "schema",
-    ]
-    return any(marker in error_text for marker in markers)
 
 
 def _validate_columns(df: DataFrame, columns: list[str], *, label: str) -> None:
@@ -213,7 +185,7 @@ def run_quality_gate(
             "passed",
             "details_json",
         ],
-    ).withColumn("run_ts", F.current_timestamp())
+    ).withColumn("run_ts", F.current_timestamp().cast("timestamp"))
 
     ordered_columns = [
         "run_ts",
@@ -228,24 +200,32 @@ def run_quality_gate(
     ]
     summary_df = summary_df.select(*ordered_columns)
 
-    _ensure_table_namespace(spark, output_table)
+    ensure_table_namespace(spark, output_table)
+    if output_table.startswith("quality.") and spark.catalog.tableExists(output_table):
+        # Drop/recreate avoids Hive alterTableDataSchema attempts during overwrite reruns.
+        drop_table_if_exists(spark, output_table)
+
     try:
-        (
-            summary_df.write.format("delta")
-            .mode("overwrite")
-            .option("overwriteSchema", "true")
-            .saveAsTable(output_table)
+        write_delta_table_safe(
+            spark,
+            table_name=output_table,
+            source_df=summary_df,
+            mode="overwrite",
+            overwrite_schema=True,
+            recreate_on_schema_conflict=output_table.startswith("quality."),
         )
     except Exception as exc:
-        if not output_table.startswith("quality.") or not _is_schema_conflict_error(exc):
+        if not output_table.startswith("quality.") or not is_schema_conflict_error(exc):
             raise
 
-        _drop_table_if_exists(spark, output_table)
-        (
-            summary_df.write.format("delta")
-            .mode("overwrite")
-            .option("overwriteSchema", "true")
-            .saveAsTable(output_table)
+        drop_table_if_exists(spark, output_table)
+        write_delta_table_safe(
+            spark,
+            table_name=output_table,
+            source_df=summary_df,
+            mode="overwrite",
+            overwrite_schema=True,
+            recreate_on_schema_conflict=True,
         )
 
     result = {

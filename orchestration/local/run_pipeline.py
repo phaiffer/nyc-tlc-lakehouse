@@ -17,6 +17,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from pipelines.common.local_delta_writer import (  # noqa: E402
+    is_schema_conflict_error,
+    write_delta_table_safe,
+)
 from pipelines.gold_marts.run_gold_enforced import run_gold_enforced  # noqa: E402
 from pipelines.silver_transform.run_silver_enforced import run_silver_enforced  # noqa: E402
 from quality.validators.quality_gate import run_quality_gate  # noqa: E402
@@ -27,6 +31,16 @@ GOLD_TABLE = "gold.fct_trips_daily"
 QUARANTINE_TABLE = "quality.quarantine_records"
 METRICS_TABLE = "quality.pipeline_metrics"
 VIOLATIONS_TABLE = "quality.violations_summary"
+BRONZE_FIXED_COLUMN_TYPES = {
+    "VendorID": "int",
+    "passenger_count": "bigint",
+    "RatecodeID": "bigint",
+    "payment_type": "bigint",
+    "PULocationID": "int",
+    "DOLocationID": "int",
+    "tpep_pickup_datetime": "timestamp",
+    "tpep_dropoff_datetime": "timestamp",
+}
 
 QUALITY_TABLES = [QUARANTINE_TABLE, METRICS_TABLE, VIOLATIONS_TABLE]
 ALL_TABLES = [
@@ -43,6 +57,10 @@ DEFAULT_WAREHOUSE_DIR = REPO_ROOT / ".local" / "spark-warehouse"
 DEFAULT_METASTORE_DIR = REPO_ROOT / ".local" / "metastore_db"
 DEFAULT_SPARK_LOCAL_DIR = REPO_ROOT / ".local" / "spark-local"
 DEFAULT_DOWNLOAD_DIR = REPO_ROOT / "data" / "raw"
+LOCAL_METASTORE_WARN_NOTE = (
+    "Local note: WARN messages about Hive SerDe compatibility for Delta tables are expected when "
+    "using Spark + Delta + embedded Hive metastore."
+)
 
 
 @dataclass(frozen=True)
@@ -374,6 +392,53 @@ def _apply_optional_month_filter(df, *, year: int | None, month: int | None):
     )
 
 
+def _cast_timestamp_ntz_columns_to_timestamp(df):
+    timestamp_ntz_columns = [
+        field.name for field in df.schema.fields if field.dataType.simpleString() == "timestamp_ntz"
+    ]
+    if not timestamp_ntz_columns:
+        return df, []
+
+    timestamp_ntz_column_set = set(timestamp_ntz_columns)
+    normalized_df = df.select(
+        *[
+            F.col(column_name).cast("timestamp").alias(column_name)
+            if column_name in timestamp_ntz_column_set
+            else F.col(column_name)
+            for column_name in df.columns
+        ]
+    )
+    return normalized_df, timestamp_ntz_columns
+
+
+def _cast_columns_to_fixed_types(df, *, column_types: dict[str, str]):
+    casted_columns: list[str] = []
+    projected_columns = []
+
+    for column_name in df.columns:
+        target_type = column_types.get(column_name)
+        if target_type is None:
+            projected_columns.append(F.col(column_name))
+            continue
+
+        casted_columns.append(f"{column_name}:{target_type}")
+        projected_columns.append(F.col(column_name).cast(target_type).alias(column_name))
+
+    if not casted_columns:
+        return df, []
+
+    return df.select(*projected_columns), casted_columns
+
+
+def _normalize_bronze_input_schema(df):
+    normalized_df, casted_timestamp_ntz_columns = _cast_timestamp_ntz_columns_to_timestamp(df)
+    canonical_df, casted_fixed_columns = _cast_columns_to_fixed_types(
+        normalized_df,
+        column_types=BRONZE_FIXED_COLUMN_TYPES,
+    )
+    return canonical_df, casted_timestamp_ntz_columns, casted_fixed_columns
+
+
 def _run_bronze(
     spark: SparkSession,
     *,
@@ -386,7 +451,26 @@ def _run_bronze(
         _drop_tables(spark, [BRONZE_TABLE])
 
     raw_df = spark.read.parquet(str(input_parquet.resolve()))
-    filtered_df = _apply_optional_month_filter(raw_df, year=year, month=month)
+    (
+        canonical_df,
+        casted_timestamp_ntz_columns,
+        casted_fixed_columns,
+    ) = _normalize_bronze_input_schema(raw_df)
+    if casted_timestamp_ntz_columns:
+        print(
+            "Cast timestamp_ntz columns to timestamp for local Hive metastore compatibility:"
+            f" {len(casted_timestamp_ntz_columns)} columns -> "
+            f"{', '.join(casted_timestamp_ntz_columns)}"
+        )
+
+    if casted_fixed_columns:
+        print(
+            "Applied deterministic Bronze column casts for rerun stability:"
+            f" {len(casted_fixed_columns)} columns -> "
+            f"{', '.join(casted_fixed_columns)}"
+        )
+
+    filtered_df = _apply_optional_month_filter(canonical_df, year=year, month=month)
 
     mtime_utc = datetime.fromtimestamp(input_parquet.stat().st_mtime, tz=timezone.utc).replace(
         tzinfo=None
@@ -396,9 +480,14 @@ def _run_bronze(
         .withColumn("source_file", F.lit(input_parquet.name))
     )
 
-    _ensure_schema_exists(spark, "bronze")
-    bronze_df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(
-        BRONZE_TABLE
+    write_delta_table_safe(
+        spark,
+        table_name=BRONZE_TABLE,
+        source_df=bronze_df,
+        mode="overwrite",
+        overwrite_schema=True,
+        force_recreate=True,
+        recreate_on_schema_conflict=True,
     )
 
     print("Bronze table ready:", BRONZE_TABLE)
@@ -461,19 +550,6 @@ def _run_gold(
     print("Gold rows:", spark.table(GOLD_TABLE).count())
 
 
-def _is_schema_conflict_error(exc: Exception) -> bool:
-    error_text = str(exc).lower()
-    markers = [
-        "incompatible",
-        "cannot cast",
-        "invalidoperationexception",
-        "failed to alter table",
-        "analysisexception",
-        "schema",
-    ]
-    return any(marker in error_text for marker in markers)
-
-
 def _run_quality(
     spark: SparkSession,
     *,
@@ -496,7 +572,7 @@ def _run_quality(
             strict=strict_quality,
         )
     except Exception as exc:
-        if not _is_schema_conflict_error(exc):
+        if not is_schema_conflict_error(exc):
             raise
 
         print("Quality write conflict detected; dropping and recreating quality.violations_summary")
@@ -695,6 +771,7 @@ def main() -> None:
 
     paths = _resolve_spark_paths(warehouse_dir=getattr(args, "warehouse_dir", None))
     spark = _build_spark_session(paths=paths)
+    print(LOCAL_METASTORE_WARN_NOTE)
 
     try:
         if args.command == "inspect":
