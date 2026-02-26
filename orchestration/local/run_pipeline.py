@@ -32,6 +32,9 @@ from quality.validators.quality_gate import run_quality_gate  # noqa: E402
 BRONZE_TABLE = "bronze.events_raw"
 SILVER_TABLE = "silver.trips_clean"
 GOLD_TABLE = "gold.fct_trips_daily"
+DIM_VENDOR_TABLE = "gold.dim_vendor"
+DIM_PAYMENT_TYPE_TABLE = "gold.dim_payment_type"
+DIM_RATE_CODE_TABLE = "gold.dim_rate_code"
 QUARANTINE_TABLE = "quality.quarantine_records"
 METRICS_TABLE = "quality.pipeline_metrics"
 VIOLATIONS_TABLE = "quality.violations_summary"
@@ -49,6 +52,9 @@ ALL_TABLES = [
     BRONZE_TABLE,
     SILVER_TABLE,
     GOLD_TABLE,
+    DIM_VENDOR_TABLE,
+    DIM_PAYMENT_TYPE_TABLE,
+    DIM_RATE_CODE_TABLE,
     QUARANTINE_TABLE,
     METRICS_TABLE,
     VIOLATIONS_TABLE,
@@ -484,7 +490,17 @@ def _run_gold(
     reset: bool,
 ) -> None:
     if reset:
-        _drop_tables(spark, [GOLD_TABLE, QUARANTINE_TABLE, METRICS_TABLE])
+        _drop_tables(
+            spark,
+            [
+                GOLD_TABLE,
+                DIM_VENDOR_TABLE,
+                DIM_PAYMENT_TYPE_TABLE,
+                DIM_RATE_CODE_TABLE,
+                QUARANTINE_TABLE,
+                METRICS_TABLE,
+            ],
+        )
 
     run_gold_enforced(
         spark=spark,
@@ -497,6 +513,9 @@ def _run_gold(
         max_invalid_ratio=max_invalid_ratio,
         year=year,
         month=month,
+        dim_vendor_table=DIM_VENDOR_TABLE,
+        dim_payment_type_table=DIM_PAYMENT_TYPE_TABLE,
+        dim_rate_code_table=DIM_RATE_CODE_TABLE,
     )
 
     print("Gold table ready:", GOLD_TABLE)

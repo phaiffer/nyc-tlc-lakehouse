@@ -10,6 +10,7 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import DecimalType
 
 from pipelines.common.delta_incremental_merge import incremental_merge
+from pipelines.common.local_delta_writer import write_delta_table_safe
 from quality.observability.metrics_writer import write_pipeline_metrics
 from quality.reconciliation.reconciliation_checks import reconcile_row_counts
 from quality.validators.contract_loader import load_contract_by_dataset
@@ -59,6 +60,75 @@ def _build_gold_daily_kpis(silver_df: DataFrame) -> DataFrame:
     )
 
 
+def _build_dim_vendor(silver_df: DataFrame) -> DataFrame:
+    return (
+        silver_df.select(F.col("vendor_id").cast("string").alias("vendor_id"))
+        .distinct()
+        .filter(F.col("vendor_id").isNotNull())
+        .withColumn(
+            "vendor_name",
+            F.when(F.col("vendor_id") == F.lit("1"), F.lit("Creative Mobile Technologies"))
+            .when(F.col("vendor_id") == F.lit("2"), F.lit("VeriFone Inc."))
+            .otherwise(F.lit("Unknown/Other")),
+        )
+        .withColumn(
+            "is_known_vendor",
+            F.col("vendor_id").isin(["1", "2"]).cast("boolean"),
+        )
+        .select("vendor_id", "vendor_name", "is_known_vendor")
+    )
+
+
+def _build_dim_payment_type(spark: SparkSession) -> DataFrame:
+    rows = [
+        (0, "Flex Fare trip"),
+        (1, "Credit card"),
+        (2, "Cash"),
+        (3, "No charge"),
+        (4, "Dispute"),
+        (5, "Unknown"),
+        (6, "Voided trip"),
+    ]
+    return spark.createDataFrame(
+        rows,
+        schema=["payment_type_id", "payment_type_name"],
+    )
+
+
+def _build_dim_rate_code(spark: SparkSession) -> DataFrame:
+    rows = [
+        (1, "Standard rate"),
+        (2, "JFK"),
+        (3, "Newark"),
+        (4, "Nassau or Westchester"),
+        (5, "Negotiated fare"),
+        (6, "Group ride"),
+        (99, "Unknown"),
+    ]
+    return spark.createDataFrame(
+        rows,
+        schema=["rate_code_id", "rate_code_name"],
+    )
+
+
+def _write_dimension_table(
+    spark: SparkSession,
+    *,
+    table_name: str,
+    source_df: DataFrame,
+) -> None:
+    _ensure_table_namespace(spark, table_name)
+    write_delta_table_safe(
+        spark,
+        table_name=table_name,
+        source_df=source_df,
+        mode="overwrite",
+        overwrite_schema=True,
+        force_recreate=True,
+        recreate_on_schema_conflict=True,
+    )
+
+
 def _assert_month_window_day_range(df: DataFrame, *, year: int | None, month: int | None) -> None:
     if year is None and month is None:
         return
@@ -92,6 +162,9 @@ def run_gold_enforced(
     strict_reconciliation: bool = False,
     year: int | None = None,
     month: int | None = None,
+    dim_vendor_table: str = "gold.dim_vendor",
+    dim_payment_type_table: str = "gold.dim_payment_type",
+    dim_rate_code_table: str = "gold.dim_rate_code",
 ) -> None:
     run_id = str(uuid.uuid4())
 
@@ -185,6 +258,26 @@ def run_gold_enforced(
         metrics=run_metrics,
     )
 
+    dim_vendor_df = _build_dim_vendor(windowed_silver_df)
+    dim_payment_type_df = _build_dim_payment_type(spark)
+    dim_rate_code_df = _build_dim_rate_code(spark)
+
+    _write_dimension_table(
+        spark,
+        table_name=dim_vendor_table,
+        source_df=dim_vendor_df,
+    )
+    _write_dimension_table(
+        spark,
+        table_name=dim_payment_type_table,
+        source_df=dim_payment_type_df,
+    )
+    _write_dimension_table(
+        spark,
+        table_name=dim_rate_code_table,
+        source_df=dim_rate_code_df,
+    )
+
     print("Gold enforcement summary:", enforcement.summary)
     print("Gold quarantine summary:", quarantine_summary)
     print("Gold merge metrics:", merge_metrics)
@@ -203,5 +296,10 @@ def run_gold_enforced(
             "enforcement_summary": enforcement.summary,
             "merge_metrics": merge_metrics,
             "reconciliation_report": asdict(reconciliation_report),
+            "dimension_tables": {
+                "vendor": dim_vendor_table,
+                "payment_type": dim_payment_type_table,
+                "rate_code": dim_rate_code_table,
+            },
         },
     )
