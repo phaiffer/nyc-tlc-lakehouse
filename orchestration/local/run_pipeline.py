@@ -25,6 +25,7 @@ from pipelines.common.local_delta_writer import (  # noqa: E402
 from pipelines.common.schema_normalizer import normalize_bronze_schema  # noqa: E402
 from pipelines.gold_marts.run_gold_enforced import run_gold_enforced  # noqa: E402
 from pipelines.silver_transform.run_silver_enforced import run_silver_enforced  # noqa: E402
+from quality.observability.drift_detector import detect_and_record_drift  # noqa: E402
 from quality.validators.contract_loader import load_contract_by_dataset  # noqa: E402
 from quality.validators.quality_gate import run_quality_gate  # noqa: E402
 
@@ -34,8 +35,16 @@ GOLD_TABLE = "gold.fct_trips_daily"
 QUARANTINE_TABLE = "quality.quarantine_records"
 METRICS_TABLE = "quality.pipeline_metrics"
 VIOLATIONS_TABLE = "quality.violations_summary"
+DRIFT_EVENTS_TABLE = "quality.drift_events"
+DRIFT_BASELINE_TABLE = "quality.drift_baseline_metrics"
 
-QUALITY_TABLES = [QUARANTINE_TABLE, METRICS_TABLE, VIOLATIONS_TABLE]
+QUALITY_TABLES = [
+    QUARANTINE_TABLE,
+    METRICS_TABLE,
+    VIOLATIONS_TABLE,
+    DRIFT_EVENTS_TABLE,
+    DRIFT_BASELINE_TABLE,
+]
 ALL_TABLES = [
     BRONZE_TABLE,
     SILVER_TABLE,
@@ -43,6 +52,8 @@ ALL_TABLES = [
     QUARANTINE_TABLE,
     METRICS_TABLE,
     VIOLATIONS_TABLE,
+    DRIFT_EVENTS_TABLE,
+    DRIFT_BASELINE_TABLE,
 ]
 ALL_SCHEMAS = ["bronze", "silver", "gold", "quality"]
 
@@ -555,9 +566,42 @@ def _run_quality(
             rule_configs=quality_rule_configs,
         )
 
+    silver_drift_summary = detect_and_record_drift(
+        spark,
+        source_df=spark.table(SILVER_TABLE),
+        dataset=SILVER_TABLE,
+        run_id=run_id,
+        run_ts=run_ts,
+        window_year=year,
+        window_month=month,
+        config_path=REPO_ROOT / "config" / "drift_thresholds.yml",
+        drift_events_table=DRIFT_EVENTS_TABLE,
+        baseline_table=DRIFT_BASELINE_TABLE,
+        fare_column="fare_amount",
+        distance_column="trip_distance",
+        passenger_count_column="passenger_count",
+    )
+    gold_drift_summary = detect_and_record_drift(
+        spark,
+        source_df=spark.table(GOLD_TABLE),
+        dataset=GOLD_TABLE,
+        run_id=run_id,
+        run_ts=run_ts,
+        window_year=year,
+        window_month=month,
+        config_path=REPO_ROOT / "config" / "drift_thresholds.yml",
+        drift_events_table=DRIFT_EVENTS_TABLE,
+        baseline_table=DRIFT_BASELINE_TABLE,
+        fare_column="total_fare",
+        distance_column="trip_distance",
+        passenger_count_column="passenger_count",
+    )
+
     print("Quality table ready:", VIOLATIONS_TABLE)
     print("Quality rows:", spark.table(VIOLATIONS_TABLE).count())
     print("Quality summary:", result)
+    print("Drift summary (silver):", silver_drift_summary)
+    print("Drift summary (gold):", gold_drift_summary)
 
 
 def _first_column_value(row) -> str:

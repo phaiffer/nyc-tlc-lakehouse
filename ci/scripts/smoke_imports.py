@@ -13,6 +13,7 @@ def main() -> None:
     from pipelines.common.delta_incremental_merge import incremental_merge
     from pipelines.gold_marts.run_gold_enforced import run_gold_enforced
     from pipelines.silver_transform.run_silver_enforced import run_silver_enforced
+    from quality.observability.drift_detector import detect_and_record_drift
     from quality.observability.metrics_writer import write_pipeline_metrics
     from quality.reconciliation.reconciliation_checks import reconcile_row_counts
     from quality.validators.contract_loader import DataContract, load_contract_by_dataset
@@ -23,6 +24,7 @@ def main() -> None:
     _ = (
         incremental_merge,
         reconcile_row_counts,
+        detect_and_record_drift,
         write_pipeline_metrics,
         enforce_contract,
         write_quarantine,

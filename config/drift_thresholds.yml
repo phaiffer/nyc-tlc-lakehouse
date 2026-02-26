@@ -1,0 +1,27 @@
+datasets:
+  silver.trips_clean:
+    volume_ratio:
+      warn: 0.20
+      error: 0.35
+    avg_fare_amount_ratio:
+      warn: 0.20
+      error: 0.35
+    avg_trip_distance_ratio:
+      warn: 0.20
+      error: 0.35
+    passenger_distribution_l1:
+      warn: 0.15
+      error: 0.25
+  gold.fct_trips_daily:
+    volume_ratio:
+      warn: 0.20
+      error: 0.35
+    avg_fare_amount_ratio:
+      warn: 0.20
+      error: 0.35
+    avg_trip_distance_ratio:
+      warn: 0.25
+      error: 0.40
+    passenger_distribution_l1:
+      warn: 0.20
+      error: 0.30
