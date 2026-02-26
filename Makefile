@@ -11,7 +11,7 @@ COMMON_ARGS = $(if $(YEAR),--year $(YEAR),) $(if $(MONTH),--month $(MONTH),) --m
 STRICT_QUALITY_ARG = $(if $(filter 1 true TRUE yes YES,$(STRICT_QUALITY)),--strict-quality,)
 INPUT_ARG = $(if $(INPUT_PARQUET),--input-parquet "$(INPUT_PARQUET)",)
 
-.PHONY: venv lint contracts smoke local-smoke download inspect bronze silver gold quality run-all full-run clean reset
+.PHONY: venv lint fmt contracts smoke local-smoke download inspect bronze silver gold quality run-all full-run clean reset
 
 venv:
 	python3 -m venv .venv
@@ -20,6 +20,9 @@ venv:
 
 lint:
 	$(PYTHON) -m ruff check .
+
+fmt:
+	$(PYTHON) -m ruff format .
 
 contracts:
 	$(PYTHON) ci/scripts/validate_contracts.py

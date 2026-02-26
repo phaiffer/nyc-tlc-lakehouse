@@ -26,6 +26,10 @@ jobs:
         run: |
           ruff check .
 
+      - name: Format check (ruff)
+        run: |
+          ruff format --check .
+
       - name: Validate contracts
         run: |
           python ci/scripts/validate_contracts.py
