@@ -34,9 +34,14 @@ Managed Delta tables:
 - `bronze.events_raw`
 - `silver.trips_clean`
 - `gold.fct_trips_daily`
+- `gold.dim_vendor`
+- `gold.dim_payment_type`
+- `gold.dim_rate_code`
 - `quality.quarantine_records`
 - `quality.pipeline_metrics`
 - `quality.violations_summary`
+- `quality.drift_events`
+- `quality.drift_baseline_metrics`
 
 ## CLI Commands
 

@@ -1,155 +1,108 @@
-# Modern Lakehouse Engineering Project — NYC TLC Yellow Taxi
+# NYC TLC Lakehouse (Spark + Delta + Local Hive Metastore)
 
-## Overview
+Enterprise-style local Lakehouse project for portfolio use, built on:
 
-This project implements a production-grade Lakehouse architecture using:
+- PySpark 3.5 + Delta Lake
+- Embedded Hive metastore (Derby) for local catalog persistence
+- Contract-driven Bronze/Silver/Gold pipelines
+- Quality gates, quarantine, observability metrics, and drift detection
 
-- PySpark
-- Delta Lake
-- Medallion Architecture (Bronze / Silver / Gold)
-- Data Quality Gate
-- BI-ready Star Schema Marts
+## Architecture Overview
 
-Dataset: **NYC TLC Yellow Taxi (January 2024)**  
-Source: Official NYC Taxi & Limousine Commission public dataset.
+Data flow:
 
----
+1. `bronze.events_raw`: deterministic raw ingestion from TLC parquet
+2. `silver.trips_clean`: canonical trip model + contract enforcement + incremental merge
+3. `gold.fct_trips_daily`: business KPIs (daily grain) + incremental merge
+4. Quality & observability:
+   - `quality.quarantine_records`
+   - `quality.violations_summary`
+   - `quality.pipeline_metrics`
+   - `quality.drift_events`
+   - `quality.drift_baseline_metrics`
+5. Semantic dimensions:
+   - `gold.dim_vendor`
+   - `gold.dim_payment_type`
+   - `gold.dim_rate_code`
 
-# Architecture
-
-Bronze → Silver → Gold → Data Quality → BI Marts
-
-## Bronze
-- Raw ingestion from official TLC parquet files
-- Stored in Delta format
-- Append-friendly
-- No business filtering applied
-
-## Silver
-- Curated, validated dataset
-- Enforced temporal window (January 2024)
-- Removed invalid trips:
-  - Null pickup/dropoff timestamps
-  - Negative fare
-  - Zero/negative duration
-- Derived column: `pickup_date`
-- Partitioned by `pickup_date`
-
-## Gold
-- Business-level daily KPIs
-- Deterministic aggregations
-- Null-safe revenue normalization
-- Daily grain
-- Validated against Silver row counts
-
-## Data Quality Gate
-- Reconciliation: Bronze → Silver → Gold
-- Completeness (null rate per column)
-- Validity rules (duration, fare, distance, passenger count)
-- Schema drift detection
-- Deterministic monthly snapshot stored in Delta
-
-## BI-Ready Marts
-### fact_trips
-- Grain: 1 trip
-- Partitioned by pickup_date
-- Derived duration metrics
-- Date surrogate key
-
-### mart_daily_revenue
-- Grain: 1 day
-- Business KPIs ready for dashboard consumption
-
-### dim_date
-- Calendar dimension
-- Surrogate date_key (yyyyMMdd)
-- Weekend flag
-- Day/month names
-
----
-
-# Key Engineering Principles Demonstrated
-
-- Deterministic pipelines
-- Idempotent notebook execution
-- No implicit state dependency
-- Physical cleanup of Delta paths
-- Partition-aware modeling
-- Data validation before serving
-- Separation of concerns between layers
-- BI-friendly star schema modeling
-
----
-
-# Row-Level Reconciliation
-
-All downstream layers are validated:
-
-- Silver row count matches fact_trips
-- Gold KPI sum(trips) matches Silver
-- dim_date covers full monthly window
-- No orphan keys in star schema joins
-
----
-
-# Why This Project Matters
-
-This repository demonstrates:
-
-- Modern Data Engineering best practices
-- Lakehouse architecture design
-- Data quality-first mindset
-- Production-ready modeling decisions
-- Analytics Engineering concepts without dbt dependency
-
----
-
-# Next Improvements (Planned)
-
-- Schema contract enforcement
-- Automated DQ thresholds
-- Incremental processing strategy
-- CI validation simulation
-- Performance optimization (clustering strategy)
-
----
-
-# How To Run Locally
+## Quickstart
 
 ```bash
-./.venv/bin/python orchestration/local/run_pipeline.py run-all \
-  --input-parquet data/raw/yellow_tripdata_2024-01.parquet \
-  --year 2024 --month 1 --strict-quality
+make venv
+make download YEAR=2024 MONTH=1
+make run-all YEAR=2024 MONTH=1
+make inspect
 ```
 
-Useful shortcuts:
+Key local commands:
 
-- `make lint`
-- `make contracts`
-- `make smoke`
-- `make local-smoke YEAR=2024 MONTH=1 INPUT_PARQUET=data/raw/yellow_tripdata_2024-01.parquet`
-- `make run-all INPUT_PARQUET=data/raw/yellow_tripdata_2024-01.parquet YEAR=2024 MONTH=1 STRICT_QUALITY=1`
+```bash
+make fmt
+make lint
+make test
+make smoke
+make run-local YEAR=2024 MONTH=1
+```
 
-## Local Spark + Delta + Hive Metastore: Known Warnings
+## Local Execution (Release-Gate Path)
 
-When running locally with Spark + Delta + embedded Hive metastore, WARN logs similar to:
+```bash
+python orchestration/local/run_pipeline.py reset
+python orchestration/local/run_pipeline.py run-all --year 2024 --month 1
+python orchestration/local/run_pipeline.py run-all --year 2024 --month 1
+python orchestration/local/run_pipeline.py inspect
+```
 
-- `HiveExternalCatalog: Couldn't find corresponding Hive SerDe for data source provider delta`
+## Expected WARN Messages (Local Hive + Delta)
 
-are expected. They indicate Spark is storing Delta metadata in a Spark-specific format in the
-local Hive metastore.
+With Spark + Delta + embedded Hive metastore, warnings like this are expected:
 
-Treat these as informational in local mode unless they escalate to actionable errors such as:
+- `Couldn't find corresponding Hive SerDe for data source provider delta`
 
-- `ERROR HiveAlterHandler: Failed to alter table ...`
-- `InvalidOperationException ... incompatible columns`
+These are informational in local mode. They do not indicate pipeline failure. Actual failures are
+treated as errors (for example: incompatible schema/alter-table exceptions).
 
-The local pipeline hardening includes deterministic schema casts and safe overwrite/recreate
-logic for operational tables to avoid metastore drift across reruns.
+## Incremental Strategy (Watermark + Late Arrivals)
 
----
+- Silver contract:
+  - watermark: `updated_at`
+  - late-arrival window: 7 days
+- Gold contract:
+  - watermark: `trip_date`
+  - late-arrival window: 7 days
 
-# Author
+Merge behavior:
 
-Data Engineering Portfolio Project  
-Built for professional-level demonstration.
+- deterministic source dedup by PK + watermark + stable tie-break hash
+- implicit schema evolution disabled (`mergeSchema=false`, `autoMerge=false`)
+- explicit schema mismatch handling with controlled table recreate when needed
+
+## Quality Gates
+
+Quality gates write severity-aware rule summaries to `quality.violations_summary`.
+
+- `severity=error`: can fail strict gate
+- `severity=warn/info`: recorded but does not fail strict gate
+
+Quarantine records include:
+
+- `reason_code`, `rule_id`, `rule_name`, `severity`, `run_id`, `run_ts`
+
+Drift detection is configurable at:
+
+- `config/drift_thresholds.yml`
+
+## Documentation
+
+- [Architecture](docs/architecture.md)
+- [Operations](docs/operations.md)
+- [Data Quality](docs/data_quality.md)
+- [Semantic Model](docs/semantic_model.md)
+- [Contracts](docs/contracts.md)
+- [Incremental](docs/incremental.md)
+
+ADRs:
+
+- [ADR-0001 Embedded Hive Metastore Constraints](docs/adr/0001-embedded-hive-metastore-constraints.md)
+- [ADR-0002 Contract-Driven Schema Governance](docs/adr/0002-contract-driven-schema-governance.md)
+- [ADR-0003 Incremental Merge and Reconciliation](docs/adr/0003-incremental-merge-reconciliation.md)
