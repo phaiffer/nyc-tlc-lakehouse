@@ -1,4 +1,4 @@
-PYTHON ?= ./.venv/bin/python
+PYTHON ?= $(shell if [ -x ./.venv/bin/python ]; then echo ./.venv/bin/python; else echo python3; fi)
 INPUT_PARQUET ?=
 YEAR ?= 2024
 MONTH ?= 1
@@ -11,7 +11,7 @@ COMMON_ARGS = $(if $(YEAR),--year $(YEAR),) $(if $(MONTH),--month $(MONTH),) --m
 STRICT_QUALITY_ARG = $(if $(filter 1 true TRUE yes YES,$(STRICT_QUALITY)),--strict-quality,)
 INPUT_ARG = $(if $(INPUT_PARQUET),--input-parquet "$(INPUT_PARQUET)",)
 
-.PHONY: venv lint fmt contracts smoke local-smoke download inspect bronze silver gold quality run-all full-run clean reset
+.PHONY: venv lint fmt test contracts smoke run-local local-smoke download inspect bronze silver gold quality run-all full-run clean reset
 
 venv:
 	python3 -m venv .venv
@@ -24,13 +24,17 @@ lint:
 fmt:
 	$(PYTHON) -m ruff format .
 
+test:
+	$(PYTHON) -m pytest -q
+
 contracts:
 	$(PYTHON) ci/scripts/validate_contracts.py
 	$(PYTHON) ci/scripts/detect_contract_breaking_changes.py
 
 smoke:
-	$(PYTHON) -m compileall .
 	$(PYTHON) ci/scripts/smoke_imports.py
+
+run-local: local-smoke
 
 local-smoke:
 	YEAR=$(YEAR) MONTH=$(MONTH) MAX_INVALID_RATIO=$(MAX_INVALID_RATIO) WAREHOUSE_DIR="$(WAREHOUSE_DIR)" INPUT_PARQUET="$(INPUT_PARQUET)" ./scripts/local_smoke_test.sh

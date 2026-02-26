@@ -1,4 +1,4 @@
-name: CI - Contracts Validation
+name: CI
 
 on:
   pull_request:
@@ -6,7 +6,7 @@ on:
     branches: [ "main" ]
 
 jobs:
-  contracts:
+  checks:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -24,23 +24,23 @@ jobs:
 
       - name: Lint (ruff)
         run: |
-          ruff check .
+          make lint
 
       - name: Format check (ruff)
         run: |
-          ruff format --check .
+          python -m ruff format --check .
+
+      - name: Unit and integration tests
+        run: |
+          make test
 
       - name: Validate contracts
         run: |
           python ci/scripts/validate_contracts.py
 
-      - name: Compile all Python files
+      - name: Smoke
         run: |
-          python -m compileall .
-
-      - name: Smoke imports
-        run: |
-          python ci/scripts/smoke_imports.py
+          make smoke
 
       - name: Fetch base branch history
         if: github.event_name == 'pull_request'
