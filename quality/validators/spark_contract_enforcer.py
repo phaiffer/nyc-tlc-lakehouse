@@ -32,11 +32,8 @@ def _normalize_severity(value: Any) -> str:
     return severity
 
 
-def _build_first_failure_array(rules: list[dict[str, Any]], *, key: str):
-    return F.array_remove(
-        F.array(*[F.when(rule["failed_expr"], F.lit(str(rule[key]))) for rule in rules]),
-        F.lit(None),
-    )
+def _build_first_failure_value(rules: list[dict[str, Any]], *, key: str):
+    return F.coalesce(*[F.when(rule["failed_expr"], F.lit(str(rule[key]))) for rule in rules])
 
 
 def enforce_contract(
@@ -135,39 +132,30 @@ def enforce_contract(
     non_error_rules = [rule for rule in expectation_rules if rule["severity"] != "error"]
 
     if error_rules:
-        failed_rule_ids = _build_first_failure_array(error_rules, key="rule_id")
-        failed_rule_names = _build_first_failure_array(error_rules, key="rule_name")
-        failed_reason_codes = _build_first_failure_array(error_rules, key="reason_code")
-        failed_severities = _build_first_failure_array(error_rules, key="severity")
+        failed_rule_id = _build_first_failure_value(error_rules, key="rule_id")
+        failed_rule_name = _build_first_failure_value(error_rules, key="rule_name")
+        failed_reason_code = _build_first_failure_value(error_rules, key="reason_code")
+        failed_severity = _build_first_failure_value(error_rules, key="severity")
+        is_error_invalid_expr = reduce(
+            lambda left, right: left | right,
+            [rule["failed_expr"] for rule in error_rules],
+        )
 
         staged = (
-            df.withColumn("__failed_rule_ids", failed_rule_ids)
-            .withColumn("__failed_rule_names", failed_rule_names)
-            .withColumn("__failed_reason_codes", failed_reason_codes)
-            .withColumn("__failed_severities", failed_severities)
-            .withColumn("__is_error_invalid", F.size(F.col("__failed_rule_ids")) > F.lit(0))
+            df.withColumn("rule_id", failed_rule_id)
+            .withColumn("rule_name", failed_rule_name)
+            .withColumn("reason_code", failed_reason_code)
+            .withColumn("severity", failed_severity)
+            .withColumn("__is_error_invalid", is_error_invalid_expr)
         )
         valid_df = staged.filter(~F.col("__is_error_invalid")).drop(
-            "__failed_rule_ids",
-            "__failed_rule_names",
-            "__failed_reason_codes",
-            "__failed_severities",
+            "rule_id",
+            "rule_name",
+            "reason_code",
+            "severity",
             "__is_error_invalid",
         )
-        quarantine_df = (
-            staged.filter(F.col("__is_error_invalid"))
-            .withColumn("rule_id", F.element_at(F.col("__failed_rule_ids"), F.lit(1)))
-            .withColumn("rule_name", F.element_at(F.col("__failed_rule_names"), F.lit(1)))
-            .withColumn("reason_code", F.element_at(F.col("__failed_reason_codes"), F.lit(1)))
-            .withColumn("severity", F.element_at(F.col("__failed_severities"), F.lit(1)))
-            .drop(
-                "__failed_rule_ids",
-                "__failed_rule_names",
-                "__failed_reason_codes",
-                "__failed_severities",
-                "__is_error_invalid",
-            )
-        )
+        quarantine_df = staged.filter(F.col("__is_error_invalid")).drop("__is_error_invalid")
     else:
         valid_df = df
         quarantine_df = df.limit(0)

@@ -349,29 +349,6 @@ def detect_and_record_drift(
                     _to_json({"baseline_run_id": baseline.get("run_id")}),
                 )
             )
-    else:
-        events.append(
-            (
-                dataset,
-                run_id,
-                int(window_year) if window_year is not None else None,
-                int(window_month) if window_month is not None else None,
-                "baseline_bootstrap",
-                "info",
-                None,
-                None,
-                None,
-                0.0,
-                0.0,
-                _to_json(
-                    {
-                        "note": (
-                            "No prior baseline profile found; drift evaluation starts next run."
-                        ),
-                    }
-                ),
-            )
-        )
 
         distribution_metric = "passenger_distribution_l1"
         distribution_warn = float(thresholds[distribution_metric]["warn"])
@@ -399,6 +376,29 @@ def detect_and_record_drift(
                     _to_json({"baseline_run_id": baseline.get("run_id")}),
                 )
             )
+    else:
+        events.append(
+            (
+                dataset,
+                run_id,
+                int(window_year) if window_year is not None else None,
+                int(window_month) if window_month is not None else None,
+                "baseline_bootstrap",
+                "info",
+                None,
+                None,
+                None,
+                0.0,
+                0.0,
+                _to_json(
+                    {
+                        "note": (
+                            "No prior baseline profile found; drift evaluation starts next run."
+                        ),
+                    }
+                ),
+            )
+        )
 
     _write_drift_events(
         spark,
