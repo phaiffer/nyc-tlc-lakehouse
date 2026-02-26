@@ -105,11 +105,7 @@ def enforce_contract(
     pk_violations = 0
     if pk_cols:
         pk_violations = (
-            valid_df.groupBy(*pk_cols)
-            .count()
-            .filter(F.col("count") > 1)
-            .limit(1)
-            .count()
+            valid_df.groupBy(*pk_cols).count().filter(F.col("count") > 1).limit(1).count()
         )
 
         if pk_violations > 0:
