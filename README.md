@@ -127,7 +127,25 @@ Useful shortcuts:
 - `make lint`
 - `make contracts`
 - `make smoke`
+- `make local-smoke YEAR=2024 MONTH=1 INPUT_PARQUET=data/raw/yellow_tripdata_2024-01.parquet`
 - `make run-all INPUT_PARQUET=data/raw/yellow_tripdata_2024-01.parquet YEAR=2024 MONTH=1 STRICT_QUALITY=1`
+
+## Local Spark + Delta + Hive Metastore: Known Warnings
+
+When running locally with Spark + Delta + embedded Hive metastore, WARN logs similar to:
+
+- `HiveExternalCatalog: Couldn't find corresponding Hive SerDe for data source provider delta`
+
+are expected. They indicate Spark is storing Delta metadata in a Spark-specific format in the
+local Hive metastore.
+
+Treat these as informational in local mode unless they escalate to actionable errors such as:
+
+- `ERROR HiveAlterHandler: Failed to alter table ...`
+- `InvalidOperationException ... incompatible columns`
+
+The local pipeline hardening includes deterministic schema casts and safe overwrite/recreate
+logic for operational tables to avoid metastore drift across reruns.
 
 ---
 
