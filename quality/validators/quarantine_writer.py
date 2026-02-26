@@ -27,8 +27,7 @@ def write_quarantine(
         return {"quarantined_rows": 0, "table": quarantine_table}
 
     enriched = (
-        quarantine_df
-        .withColumn("_quarantine_dataset", F.lit(dataset))
+        quarantine_df.withColumn("_quarantine_dataset", F.lit(dataset))
         .withColumn("_quarantine_contract_version", F.lit(contract_version))
         .withColumn("_quarantine_run_id", F.lit(run_id))
         .withColumn("_quarantine_ts", F.current_timestamp().cast("timestamp"))

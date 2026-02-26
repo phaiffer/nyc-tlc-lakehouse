@@ -78,10 +78,14 @@ def write_delta_table_safe(
         print(f"Recreating {table_name} before write to avoid metastore schema drift")
         drop_table_if_exists(spark, table_name)
         table_exists = False
-    elif recreate_on_schema_mismatch and table_exists and table_schema_differs(
-        spark,
-        table_name=table_name,
-        expected_df=source_df,
+    elif (
+        recreate_on_schema_mismatch
+        and table_exists
+        and table_schema_differs(
+            spark,
+            table_name=table_name,
+            expected_df=source_df,
+        )
     ):
         print(f"Schema mismatch detected for {table_name}; recreating table")
         drop_table_if_exists(spark, table_name)

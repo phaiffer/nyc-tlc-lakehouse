@@ -181,8 +181,7 @@ def _build_spark_session(*, paths: LocalSparkPaths) -> SparkSession:
                 raise
 
             print(
-                "Metastore startup error detected; "
-                "recreating .local/metastore_db and retrying once"
+                "Metastore startup error detected; recreating .local/metastore_db and retrying once"
             )
             shutil.rmtree(paths.metastore_dir, ignore_errors=True)
 
@@ -302,7 +301,7 @@ def _build_parquet_error_message(
             f"python orchestration/local/run_pipeline.py download --year {year} --month {month}"
         )
         lines.append(
-            f"2) Find manually: find ~/ -name \"yellow_tripdata_{year:04d}-{month:02d}.parquet\""
+            f'2) Find manually: find ~/ -name "yellow_tripdata_{year:04d}-{month:02d}.parquet"'
         )
     else:
         lines.append("1) Provide both --year and --month for auto-discovery/download")
@@ -310,7 +309,7 @@ def _build_parquet_error_message(
             "2) Download automatically: "
             "python orchestration/local/run_pipeline.py download --year <YEAR> --month <MONTH>"
         )
-        lines.append("3) Find manually: find ~/ -name \"yellow_tripdata_*.parquet\"")
+        lines.append('3) Find manually: find ~/ -name "yellow_tripdata_*.parquet"')
         rerun_step = 4
 
     lines.append(
@@ -475,9 +474,8 @@ def _run_bronze(
     mtime_utc = datetime.fromtimestamp(input_parquet.stat().st_mtime, tz=timezone.utc).replace(
         tzinfo=None
     )
-    bronze_df = (
-        filtered_df.withColumn("ingest_ts", F.lit(mtime_utc).cast("timestamp"))
-        .withColumn("source_file", F.lit(input_parquet.name))
+    bronze_df = filtered_df.withColumn("ingest_ts", F.lit(mtime_utc).cast("timestamp")).withColumn(
+        "source_file", F.lit(input_parquet.name)
     )
 
     write_delta_table_safe(

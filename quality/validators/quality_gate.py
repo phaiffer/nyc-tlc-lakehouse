@@ -236,8 +236,6 @@ def run_quality_gate(
     }
 
     if strict and failing_rules:
-        raise ValueError(
-            "Quality gate failed: " + "; ".join(failing_rules)
-        )
+        raise ValueError("Quality gate failed: " + "; ".join(failing_rules))
 
     return result

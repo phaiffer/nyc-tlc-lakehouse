@@ -172,11 +172,9 @@ def incremental_merge(
             primary_key + [watermark_column],
             label=f"target_table='{target_table}'",
         )
-        max_watermark_target = (
-            target_df.select(F.max(F.col(watermark_column)).alias("max_watermark")).collect()[0][
-                "max_watermark"
-            ]
-        )
+        max_watermark_target = target_df.select(
+            F.max(F.col(watermark_column)).alias("max_watermark")
+        ).collect()[0]["max_watermark"]
         if max_watermark_target is not None:
             lower_bound = _compute_lower_bound(
                 spark,
