@@ -27,6 +27,10 @@ _DEFAULT_THRESHOLDS = {
     "non_positive_trip_duration": 0,
     "negative_fare_or_distance": 0,
     "pk_duplicates_detected": 0,
+    "gold_non_positive_volume": 0,
+    "gold_avg_fare_per_trip_out_of_range": 0,
+    "gold_min_avg_fare_per_trip": 0.5,
+    "gold_max_avg_fare_per_trip": 500.0,
 }
 
 _DEFAULT_RULE_CONFIGS = {
@@ -34,6 +38,8 @@ _DEFAULT_RULE_CONFIGS = {
     "non_positive_trip_duration": {"rule_id": "QG002", "severity": "error"},
     "negative_fare_or_distance": {"rule_id": "QG003", "severity": "error"},
     "pk_duplicates_detected": {"rule_id": "QG004", "severity": "error"},
+    "gold_non_positive_volume": {"rule_id": "QG005", "severity": "error"},
+    "gold_avg_fare_per_trip_out_of_range": {"rule_id": "QG006", "severity": "error"},
 }
 
 
@@ -141,7 +147,7 @@ def run_quality_gate(
     )
     _validate_columns(
         gold_df,
-        ["trip_date", "vendor_id"],
+        ["trip_date", "vendor_id", "trips", "total_fare"],
         label=f"gold_table='{gold_table}'",
     )
 
@@ -150,9 +156,23 @@ def run_quality_gate(
     gold_bounds = gold_df.select(
         F.min(F.col("trip_date")).alias("min_trip_date"),
         F.max(F.col("trip_date")).alias("max_trip_date"),
+        F.count(F.lit(1)).cast("bigint").alias("gold_rows"),
+        F.sum(F.col("total_fare").cast("double")).alias("gold_total_fare"),
+        F.sum(F.col("trips").cast("double")).alias("gold_total_trips"),
     ).collect()[0]
     min_trip_date = gold_bounds["min_trip_date"]
     max_trip_date = gold_bounds["max_trip_date"]
+    gold_rows = int(gold_bounds["gold_rows"] or 0)
+    gold_total_fare = float(gold_bounds["gold_total_fare"] or 0.0)
+    gold_total_trips = float(gold_bounds["gold_total_trips"] or 0.0)
+    avg_fare_per_trip = None if gold_total_trips <= 0 else gold_total_fare / gold_total_trips
+    min_avg_fare_per_trip = float(effective_thresholds["gold_min_avg_fare_per_trip"])
+    max_avg_fare_per_trip = float(effective_thresholds["gold_max_avg_fare_per_trip"])
+    if min_avg_fare_per_trip > max_avg_fare_per_trip:
+        raise ValueError(
+            "Invalid quality thresholds: gold_min_avg_fare_per_trip cannot exceed "
+            "gold_max_avg_fare_per_trip"
+        )
 
     if min_trip_date is None or max_trip_date is None:
         invalid_pickup_date_df = silver_df.limit(0)
@@ -179,6 +199,13 @@ def run_quality_gate(
     silver_pk_duplicates = _count_duplicate_rows(silver_df, key_columns=["trip_id"])
     gold_pk_duplicates = _count_duplicate_rows(gold_df, key_columns=["trip_date", "vendor_id"])
     pk_duplicates_detected = silver_pk_duplicates + gold_pk_duplicates
+    gold_non_positive_volume = 0 if gold_rows > 0 else 1
+    gold_avg_fare_per_trip_out_of_range = (
+        0
+        if avg_fare_per_trip is not None
+        and min_avg_fare_per_trip <= avg_fare_per_trip <= max_avg_fare_per_trip
+        else 1
+    )
 
     duplicate_trip_ids_df = (
         silver_df.groupBy("trip_id")
@@ -239,6 +266,28 @@ def run_quality_gate(
             "details": {
                 "silver_trip_id_duplicates": int(silver_pk_duplicates),
                 "gold_trip_date_vendor_duplicates": int(gold_pk_duplicates),
+            },
+        },
+        {
+            "rule_name": "gold_non_positive_volume",
+            "failed_count": int(gold_non_positive_volume),
+            "sample_values": json.dumps([gold_rows]),
+            "details": {"gold_rows": int(gold_rows)},
+        },
+        {
+            "rule_name": "gold_avg_fare_per_trip_out_of_range",
+            "failed_count": int(gold_avg_fare_per_trip_out_of_range),
+            "sample_values": (
+                json.dumps([round(float(avg_fare_per_trip), 6)])
+                if avg_fare_per_trip is not None
+                else None
+            ),
+            "details": {
+                "observed_avg_fare_per_trip": avg_fare_per_trip,
+                "min_avg_fare_per_trip": min_avg_fare_per_trip,
+                "max_avg_fare_per_trip": max_avg_fare_per_trip,
+                "gold_total_fare": gold_total_fare,
+                "gold_total_trips": gold_total_trips,
             },
         },
     ]

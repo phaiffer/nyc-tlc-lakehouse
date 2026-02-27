@@ -35,7 +35,9 @@ def test_quality_gate_output_schema_is_stable_across_reruns(spark) -> None:
         """
         SELECT
           CAST('2024-01-01' AS DATE) AS trip_date,
-          '1' AS vendor_id
+          '1' AS vendor_id,
+          CAST(10 AS BIGINT) AS trips,
+          CAST(155.0 AS DECIMAL(18,2)) AS total_fare
         """
     )
     gold_df.write.mode("overwrite").saveAsTable(gold_table)
@@ -91,4 +93,4 @@ def test_quality_gate_output_schema_is_stable_across_reruns(spark) -> None:
 
     assert first_signature == expected_signature
     assert second_signature == expected_signature
-    assert spark.table(output_table).count() == 4
+    assert spark.table(output_table).count() == 6

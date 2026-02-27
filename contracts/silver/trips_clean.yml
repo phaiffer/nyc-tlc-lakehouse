@@ -74,3 +74,11 @@ expectations:
     rule_id: QG004
     severity: warn
     type: quality_gate
+  - name: gold_non_positive_volume
+    rule_id: QG005
+    severity: error
+    type: quality_gate
+  - name: gold_avg_fare_per_trip_out_of_range
+    rule_id: QG006
+    severity: error
+    type: quality_gate

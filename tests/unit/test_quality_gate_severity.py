@@ -27,7 +27,9 @@ def _create_quality_input_tables(spark) -> None:
         """
         SELECT
           CAST('2024-01-01' AS DATE) AS trip_date,
-          '1' AS vendor_id
+          '1' AS vendor_id,
+          CAST(10 AS BIGINT) AS trips,
+          CAST(125.0 AS DECIMAL(18,2)) AS total_fare
         """
     )
     gold_df.write.mode("overwrite").saveAsTable("unit_quality.gold_input")
