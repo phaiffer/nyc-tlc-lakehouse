@@ -16,12 +16,6 @@ datasets:
     volume_ratio:
       warn: 0.20
       error: 0.35
-    avg_fare_amount_ratio:
+    avg_fare_per_trip_ratio:
       warn: 0.20
       error: 0.35
-    avg_trip_distance_ratio:
-      warn: 0.25
-      error: 0.40
-    passenger_distribution_l1:
-      warn: 0.20
-      error: 0.30

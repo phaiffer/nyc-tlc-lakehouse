@@ -21,6 +21,7 @@ from pipelines.common.local_delta_writer import write_delta_table_safe
 DEFAULT_DRIFT_THRESHOLDS = {
     "volume_ratio": {"warn": 0.20, "error": 0.35},
     "avg_fare_amount_ratio": {"warn": 0.20, "error": 0.35},
+    "avg_fare_per_trip_ratio": {"warn": 0.20, "error": 0.35},
     "avg_trip_distance_ratio": {"warn": 0.20, "error": 0.35},
     "passenger_distribution_l1": {"warn": 0.15, "error": 0.25},
 }
@@ -103,6 +104,14 @@ def _distribution_l1_distance(current: dict[str, float], baseline: dict[str, flo
     if not keys:
         return 0.0
     return float(sum(abs(float(current.get(k, 0.0)) - float(baseline.get(k, 0.0))) for k in keys))
+
+
+def _require_columns(df: DataFrame, *, columns: list[str], metric_name: str) -> None:
+    missing_columns = sorted([column for column in columns if column not in df.columns])
+    if missing_columns:
+        raise ValueError(
+            f"Missing required columns for drift metric '{metric_name}': {missing_columns}"
+        )
 
 
 def _read_latest_profile(
@@ -261,32 +270,107 @@ def detect_and_record_drift(
     fare_column: str = "fare_amount",
     distance_column: str = "trip_distance",
     passenger_count_column: str = "passenger_count",
+    fare_metric_name: str = "avg_fare_amount_ratio",
+    fare_profile_key: str = "avg_fare_amount",
+    fare_numerator_column: str | None = None,
+    fare_denominator_column: str | None = None,
+    enabled_metrics: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
+    supported_metrics = {
+        "volume_ratio",
+        "avg_fare_amount_ratio",
+        "avg_fare_per_trip_ratio",
+        "avg_trip_distance_ratio",
+        "passenger_distribution_l1",
+    }
+    if enabled_metrics is None:
+        effective_metrics = (
+            "volume_ratio",
+            "avg_fare_amount_ratio",
+            "avg_trip_distance_ratio",
+            "passenger_distribution_l1",
+        )
+    else:
+        effective_metrics = tuple(enabled_metrics)
+
+    unknown_metrics = sorted(set(effective_metrics) - supported_metrics)
+    if unknown_metrics:
+        raise ValueError(f"Unsupported drift metrics configured for '{dataset}': {unknown_metrics}")
+    if fare_metric_name not in supported_metrics:
+        raise ValueError(f"Unsupported fare drift metric name: {fare_metric_name}")
+
     thresholds = _load_drift_thresholds(config_path, dataset=dataset)
 
-    aggregate_row = source_df.agg(
-        F.count(F.lit(1)).cast("bigint").alias("volume"),
-        F.avg(F.col(fare_column)).cast("double").alias("avg_fare_amount")
-        if fare_column in source_df.columns
-        else F.lit(None).cast("double").alias("avg_fare_amount"),
-        F.avg(F.col(distance_column)).cast("double").alias("avg_trip_distance")
-        if distance_column in source_df.columns
-        else F.lit(None).cast("double").alias("avg_trip_distance"),
-    ).collect()[0]
+    aggregate_expressions = [F.count(F.lit(1)).cast("bigint").alias("volume")]
+
+    use_weighted_fare = (
+        fare_metric_name in effective_metrics
+        and fare_numerator_column is not None
+        and fare_denominator_column is not None
+    )
+    if fare_metric_name in effective_metrics:
+        if use_weighted_fare:
+            _require_columns(
+                source_df,
+                columns=[fare_numerator_column, fare_denominator_column],
+                metric_name=fare_metric_name,
+            )
+            aggregate_expressions.extend(
+                [
+                    F.sum(F.col(fare_numerator_column).cast("double")).alias(
+                        "__fare_numerator_sum"
+                    ),
+                    F.sum(F.col(fare_denominator_column).cast("double")).alias(
+                        "__fare_denominator_sum"
+                    ),
+                ]
+            )
+        else:
+            if fare_column not in source_df.columns:
+                raise ValueError(
+                    f"Missing required fare column '{fare_column}' for drift metric "
+                    f"'{fare_metric_name}'"
+                )
+            aggregate_expressions.append(
+                F.avg(F.col(fare_column)).cast("double").alias("__avg_fare_metric")
+            )
+
+    if "avg_trip_distance_ratio" in effective_metrics:
+        if distance_column not in source_df.columns:
+            raise ValueError(
+                f"Missing required distance column '{distance_column}' for drift metric "
+                "'avg_trip_distance_ratio'"
+            )
+        aggregate_expressions.append(
+            F.avg(F.col(distance_column)).cast("double").alias("__avg_trip_distance")
+        )
+
+    aggregate_row = source_df.agg(*aggregate_expressions).collect()[0]
     current_volume = int(aggregate_row["volume"] or 0)
-    current_avg_fare = (
-        float(aggregate_row["avg_fare_amount"])
-        if aggregate_row["avg_fare_amount"] is not None
-        else None
-    )
-    current_avg_distance = (
-        float(aggregate_row["avg_trip_distance"])
-        if aggregate_row["avg_trip_distance"] is not None
-        else None
-    )
-    current_distribution = _passenger_distribution(
-        source_df,
-        column_name=passenger_count_column,
+
+    current_avg_fare: float | None = None
+    if fare_metric_name in effective_metrics:
+        if use_weighted_fare:
+            numerator = aggregate_row["__fare_numerator_sum"]
+            denominator = aggregate_row["__fare_denominator_sum"]
+            if numerator is not None and denominator is not None and float(denominator) > 0:
+                current_avg_fare = float(numerator) / float(denominator)
+        else:
+            avg_value = aggregate_row["__avg_fare_metric"]
+            current_avg_fare = float(avg_value) if avg_value is not None else None
+
+    current_avg_distance: float | None = None
+    if "avg_trip_distance_ratio" in effective_metrics:
+        avg_distance_value = aggregate_row["__avg_trip_distance"]
+        current_avg_distance = float(avg_distance_value) if avg_distance_value is not None else None
+
+    current_distribution = (
+        _passenger_distribution(
+            source_df,
+            column_name=passenger_count_column,
+        )
+        if "passenger_distribution_l1" in effective_metrics
+        else {}
     )
 
     baseline = _read_latest_profile(
@@ -299,27 +383,35 @@ def detect_and_record_drift(
     if baseline is not None:
         baseline_distribution = json.loads(baseline.get("passenger_distribution_json") or "{}")
 
-        metric_pairs = [
-            (
-                "volume_ratio",
-                float(current_volume),
-                float(baseline.get("volume")) if baseline.get("volume") is not None else None,
-            ),
-            (
-                "avg_fare_amount_ratio",
-                current_avg_fare,
-                float(baseline.get("avg_fare_amount"))
-                if baseline.get("avg_fare_amount") is not None
-                else None,
-            ),
-            (
-                "avg_trip_distance_ratio",
-                current_avg_distance,
-                float(baseline.get("avg_trip_distance"))
-                if baseline.get("avg_trip_distance") is not None
-                else None,
-            ),
-        ]
+        metric_pairs: list[tuple[str, float | None, float | None]] = []
+        if "volume_ratio" in effective_metrics:
+            metric_pairs.append(
+                (
+                    "volume_ratio",
+                    float(current_volume),
+                    float(baseline.get("volume")) if baseline.get("volume") is not None else None,
+                )
+            )
+        if fare_metric_name in effective_metrics:
+            metric_pairs.append(
+                (
+                    fare_metric_name,
+                    current_avg_fare,
+                    float(baseline.get("avg_fare_amount"))
+                    if baseline.get("avg_fare_amount") is not None
+                    else None,
+                )
+            )
+        if "avg_trip_distance_ratio" in effective_metrics:
+            metric_pairs.append(
+                (
+                    "avg_trip_distance_ratio",
+                    current_avg_distance,
+                    float(baseline.get("avg_trip_distance"))
+                    if baseline.get("avg_trip_distance") is not None
+                    else None,
+                )
+            )
 
         for metric_name, current_value, baseline_value in metric_pairs:
             warn_threshold = float(thresholds[metric_name]["warn"])
@@ -350,32 +442,35 @@ def detect_and_record_drift(
                 )
             )
 
-        distribution_metric = "passenger_distribution_l1"
-        distribution_warn = float(thresholds[distribution_metric]["warn"])
-        distribution_error = float(thresholds[distribution_metric]["error"])
-        distribution_delta = _distribution_l1_distance(current_distribution, baseline_distribution)
-        distribution_severity = _resolve_severity(
-            delta_ratio=distribution_delta,
-            warn_threshold=distribution_warn,
-            error_threshold=distribution_error,
-        )
-        if distribution_severity is not None:
-            events.append(
-                (
-                    dataset,
-                    run_id,
-                    int(window_year) if window_year is not None else None,
-                    int(window_month) if window_month is not None else None,
-                    distribution_metric,
-                    distribution_severity,
-                    _to_json(baseline_distribution),
-                    _to_json(current_distribution),
-                    float(distribution_delta),
-                    distribution_warn,
-                    distribution_error,
-                    _to_json({"baseline_run_id": baseline.get("run_id")}),
-                )
+        if "passenger_distribution_l1" in effective_metrics:
+            distribution_metric = "passenger_distribution_l1"
+            distribution_warn = float(thresholds[distribution_metric]["warn"])
+            distribution_error = float(thresholds[distribution_metric]["error"])
+            distribution_delta = _distribution_l1_distance(
+                current_distribution, baseline_distribution
             )
+            distribution_severity = _resolve_severity(
+                delta_ratio=distribution_delta,
+                warn_threshold=distribution_warn,
+                error_threshold=distribution_error,
+            )
+            if distribution_severity is not None:
+                events.append(
+                    (
+                        dataset,
+                        run_id,
+                        int(window_year) if window_year is not None else None,
+                        int(window_month) if window_month is not None else None,
+                        distribution_metric,
+                        distribution_severity,
+                        _to_json(baseline_distribution),
+                        _to_json(current_distribution),
+                        float(distribution_delta),
+                        distribution_warn,
+                        distribution_error,
+                        _to_json({"baseline_run_id": baseline.get("run_id")}),
+                    )
+                )
     else:
         events.append(
             (
@@ -420,16 +515,24 @@ def detect_and_record_drift(
         passenger_distribution=current_distribution,
     )
 
+    selected_thresholds = {
+        metric_name: thresholds[metric_name]
+        for metric_name in effective_metrics
+        if metric_name in thresholds
+    }
+    current_profile: dict[str, Any] = {"volume": current_volume}
+    if fare_metric_name in effective_metrics:
+        current_profile[fare_profile_key] = current_avg_fare
+    if "avg_trip_distance_ratio" in effective_metrics:
+        current_profile["avg_trip_distance"] = current_avg_distance
+    if "passenger_distribution_l1" in effective_metrics:
+        current_profile["passenger_distribution"] = current_distribution
+
     return {
         "dataset": dataset,
         "events_emitted": len(events),
         "baseline_table": baseline_table,
         "drift_events_table": drift_events_table,
-        "thresholds": thresholds,
-        "current_profile": {
-            "volume": current_volume,
-            "avg_fare_amount": current_avg_fare,
-            "avg_trip_distance": current_avg_distance,
-            "passenger_distribution": current_distribution,
-        },
+        "thresholds": selected_thresholds,
+        "current_profile": current_profile,
     }

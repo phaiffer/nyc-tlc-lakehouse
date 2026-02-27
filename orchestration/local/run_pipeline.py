@@ -623,6 +623,11 @@ def _run_quality(
         fare_column="total_fare",
         distance_column="trip_distance",
         passenger_count_column="passenger_count",
+        fare_metric_name="avg_fare_per_trip_ratio",
+        fare_profile_key="avg_fare_per_trip",
+        fare_numerator_column="total_fare",
+        fare_denominator_column="trips",
+        enabled_metrics=("volume_ratio", "avg_fare_per_trip_ratio"),
     )
 
     print("Quality table ready:", VIOLATIONS_TABLE)
