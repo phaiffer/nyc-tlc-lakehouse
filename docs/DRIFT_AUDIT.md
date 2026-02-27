@@ -46,3 +46,8 @@ Implementation notes:
 ## Cold-Start Semantics Update
 
 On baseline cold-start (for example after `make reset`), baseline initialization is now represented with `event_type=baseline_initialized` and `severity=info`. It is persisted for auditability, but no longer counted as drift detection. Drift summaries now explicitly report `drift_detected_count` and `baseline_initialized_count`, and `events_emitted` reflects only detected drift events.
+
+## Next Iteration Requirements Note
+
+- P1: introduce typed baseline storage per dataset profile (Silver/Gold) to remove mixed nullable metric semantics in a shared baseline table.
+- P2: add a pluggable alert sink interface (no-op default) so `drift_detected` `warn`/`error` events can be routed without changing core detection logic.
