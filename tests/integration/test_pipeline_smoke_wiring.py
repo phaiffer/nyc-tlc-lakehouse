@@ -10,6 +10,7 @@ from orchestration.local.run_pipeline import (
     GOLD_TABLE,
     METRICS_TABLE,
     SILVER_TABLE,
+    VIOLATIONS_TABLE,
     _drop_tables,
     _run_bronze,
     _run_gold,
@@ -105,13 +106,13 @@ def test_pipeline_smoke_wiring_uses_local_sample_parquet(spark, tmp_path) -> Non
         _run_quality(
             spark,
             max_invalid_ratio=0.001,
-            strict_quality=False,
+            strict_quality=True,
             year=None,
             month=None,
             reset=False,
         )
 
-        required_tables = [BRONZE_TABLE, SILVER_TABLE, GOLD_TABLE, METRICS_TABLE]
+        required_tables = [BRONZE_TABLE, SILVER_TABLE, GOLD_TABLE, METRICS_TABLE, VIOLATIONS_TABLE]
         for table_name in required_tables:
             assert spark.catalog.tableExists(table_name), f"Expected table to exist: {table_name}"
             assert spark.table(table_name).count() > 0, f"Expected positive rows in: {table_name}"

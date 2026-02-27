@@ -39,6 +39,10 @@ jobs:
         run: |
           python -m pytest -q
 
+      - name: Pipeline smoke (strict mode, local fixture)
+        run: |
+          python -m pytest -q tests/integration/test_pipeline_smoke_wiring.py
+
       - name: Validate contracts
         run: |
           python ci/scripts/validate_contracts.py
