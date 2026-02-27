@@ -1,139 +1,119 @@
-# NYC TLC Lakehouse (Spark + Delta + Local Hive Metastore)
+# NYC TLC Lakehouse
 
-Enterprise-style local Lakehouse project for portfolio use, built on:
+[![CI Quality Gates](https://github.com/phaiffer/nyc-tlc-lakehouse/actions/workflows/ci-contracts.yml/badge.svg)](https://github.com/phaiffer/nyc-tlc-lakehouse/actions/workflows/ci-contracts.yml)
 
-- PySpark 3.5 + Delta Lake
-- Embedded Hive metastore (Derby) for local catalog persistence
-- Contract-driven Bronze/Silver/Gold pipelines
-- Quality gates, quarantine, observability metrics, and drift detection
+Local Spark + Delta Lakehouse project built as a production-style portfolio implementation. It ingests NYC TLC parquet data into a Medallion model (Bronze/Silver/Gold), enforces versioned data contracts, and persists quality outcomes (quarantine, rule violations, metrics, and drift events) using an embedded Hive metastore for deterministic local reruns.
 
 ## Architecture Overview
 
-Data flow:
+- Medallion flow:
+  - `bronze.events_raw`: raw ingest with deterministic schema normalization/casts
+  - `silver.trips_clean`: canonical trip model with contract enforcement and incremental merge
+  - `gold.fct_trips_daily`: daily KPI fact with incremental merge
+- Quality layer:
+  - `quality.quarantine_records`: invalid rows rejected by contract rules
+  - `quality.violations_summary`: quality gate rule outcomes with severity
+  - `quality.pipeline_metrics`: stage-level run metrics
+  - `quality.drift_events`, `quality.drift_baseline_metrics`: drift monitoring
+- Reference dimensions:
+  - `gold.dim_vendor`, `gold.dim_payment_type`, `gold.dim_rate_code`
 
-1. `bronze.events_raw`: deterministic raw ingestion from TLC parquet
-2. `silver.trips_clean`: canonical trip model + contract enforcement + incremental merge
-3. `gold.fct_trips_daily`: business KPIs (daily grain) + incremental merge
-4. Quality & observability:
-   - `quality.quarantine_records`
-   - `quality.violations_summary`
-   - `quality.pipeline_metrics`
-   - `quality.drift_events`
-   - `quality.drift_baseline_metrics`
-5. Semantic dimensions:
-   - `gold.dim_vendor`
-   - `gold.dim_payment_type`
-   - `gold.dim_rate_code`
+## Quickstart
 
-## Quickstart (Make Entrypoint)
+One command chain:
+
+```bash
+make setup && make download YEAR=2024 MONTH=1 && make run YEAR=2024 MONTH=1 && make inspect
+```
+
+Step-by-step:
 
 ```bash
 make setup
 make download YEAR=2024 MONTH=1
+make reset
 make run YEAR=2024 MONTH=1
 make inspect
 ```
 
-Core developer targets:
+## Developer Workflow
 
 ```bash
 make fmt
-make fmt-check
 make lint
 make test
 make check
-make reset
-make smoke
 make run YEAR=2024 MONTH=1
+make inspect
+make reset
+```
+
+Defaults: `YEAR=2024`, `MONTH=1`.
+
+## Outputs
+
+- `bronze.events_raw`: normalized raw source with ingest metadata.
+- `silver.trips_clean`: cleaned, deduplicated trip-level model.
+- `gold.fct_trips_daily`: daily vendor-level KPI mart (`trips`, `total_fare`).
+- `gold.dim_vendor`: vendor semantics.
+- `gold.dim_payment_type`: payment type lookup.
+- `gold.dim_rate_code`: rate code lookup.
+- `quality.quarantine_records`: contract-invalid rows + reason metadata.
+- `quality.violations_summary`: quality rule pass/fail counts and thresholds.
+- `quality.pipeline_metrics`: structured Silver/Gold run metrics.
+- `quality.drift_events`: emitted drift alerts by dataset/metric.
+- `quality.drift_baseline_metrics`: baseline profiles used for drift comparison.
+
+## Data Quality And Contracts
+
+- Contracts live in `contracts/bronze`, `contracts/silver`, and `contracts/gold`.
+- Contract `version` is mandatory; breaking changes require a version bump (enforced in CI).
+- Silver/Gold contracts define `primary_key`, `watermark`, and `late_arrival_days`.
+- Quarantine is append-oriented and stores rule metadata (`rule_id`, `severity`, `reason_code`, `run_id`, `run_ts`).
+- Quality gate severity:
+  - `error`: fails the run in strict mode.
+  - `warn`/`info`: recorded for observability without strict failure.
+
+## Idempotency And Incremental Merge
+
+- Bronze applies deterministic type normalization before persistence to avoid rerun drift.
+- Silver and Gold use deterministic dedup + Delta incremental merge keyed by contract PK.
+- Merge windows use contract watermarks and a late-arrival lookback:
+  - Silver: `updated_at`, 7 days
+  - Gold: `trip_date`, 7 days
+- Writes disable implicit schema evolution (`mergeSchema=false`) and use controlled table recreation only when schema conflicts are detected.
+
+## Local Environment Notes
+
+These warnings are expected in local embedded-metastore mode and do not indicate pipeline failure by themselves:
+
+- Hive SerDe compatibility for Delta tables (`Couldn't find corresponding Hive SerDe ... delta`)
+- native Hadoop library warning (`Unable to load native-hadoop library ...`)
+- hostname loopback warning (`resolves to a loopback address ...`)
+
+Inspect local catalog state with:
+
+```bash
 make inspect
 ```
 
-## Local Execution (Release-Gate Path)
+The local metastore and warehouse used by the pipeline are under `.local/`:
 
-```bash
-python orchestration/local/run_pipeline.py reset
-python orchestration/local/run_pipeline.py run-all --year 2024 --month 1
-python orchestration/local/run_pipeline.py run-all --year 2024 --month 1
-python orchestration/local/run_pipeline.py inspect
-```
+- `.local/metastore_db`
+- `.local/spark-warehouse`
+- `.local/spark-local`
 
-## Expected WARN Messages (Local Hive + Delta)
+## Troubleshooting
 
-With Spark + Delta + embedded Hive metastore, warnings like this are expected:
+- Correct Spark SQL syntax:
+  - `spark.sql("SHOW DATABASES").show()` (plural: `DATABASES`)
+  - `spark.sql("SHOW TABLES IN silver").show()`
+- If you use raw SQL strings, use:
+  - `SHOW DATABASES`
+  - `SHOW TABLES IN <db>`
+- If objects seem missing, run `make inspect` first and confirm you are querying the same embedded metastore under `.local/`.
 
-- `Couldn't find corresponding Hive SerDe for data source provider delta`
-
-These are informational in local mode. They do not indicate pipeline failure. Actual failures are
-treated as errors (for example: incompatible schema/alter-table exceptions).
-
-## Incremental Strategy (Watermark + Late Arrivals)
-
-- Silver contract:
-  - watermark: `updated_at`
-  - late-arrival window: 7 days
-- Gold contract:
-  - watermark: `trip_date`
-  - late-arrival window: 7 days
-
-Merge behavior:
-
-- deterministic source dedup by PK + watermark + stable tie-break hash
-- implicit schema evolution disabled (`mergeSchema=false`, `autoMerge=false`)
-- explicit schema mismatch handling with controlled table recreate when needed
-
-## Data Contracts
-
-Contracts are defined in `contracts/{bronze,silver,gold}` and validated in CI.
-
-- `version` is mandatory and used for schema governance.
-- Breaking changes require version bump (enforced by `ci/scripts/detect_contract_breaking_changes.py`).
-- Silver/Gold contracts define `primary_key`, `watermark`, and `late_arrival_days`.
-- Expectation rules support severity (`error`, `warn`, `info`) for quality behavior.
-
-## Quality Gates
-
-Quality gates write severity-aware rule summaries to `quality.violations_summary`.
-
-- `severity=error`: can fail strict gate
-- `severity=warn/info`: recorded but does not fail strict gate
-
-Quarantine records include:
-
-- `reason_code`, `rule_id`, `rule_name`, `severity`, `run_id`, `run_ts`
-
-Drift detection is configurable at:
-
-- `config/drift_thresholds.yml`
-
-## Example Spark SQL Queries
-
-```sql
--- Bronze: monthly volume by source file
-SELECT source_file, COUNT(*) AS rows
-FROM bronze.events_raw
-GROUP BY source_file
-ORDER BY rows DESC;
-
--- Silver: daily clean trip volume
-SELECT pickup_date, COUNT(*) AS trips
-FROM silver.trips_clean
-GROUP BY pickup_date
-ORDER BY pickup_date;
-
--- Gold: top revenue days
-SELECT trip_date, vendor_id, trips, total_fare
-FROM gold.fct_trips_daily
-ORDER BY total_fare DESC
-LIMIT 20;
-
--- Quality: failed rules by severity
-SELECT severity, rule_name, failed_count, run_ts
-FROM quality.violations_summary
-WHERE passed = false
-ORDER BY run_ts DESC, severity;
-```
-
-## Documentation
+## Additional Documentation
 
 - [Architecture](docs/architecture.md)
 - [Operations](docs/operations.md)
@@ -141,9 +121,6 @@ ORDER BY run_ts DESC, severity;
 - [Semantic Model](docs/semantic_model.md)
 - [Contracts](docs/contracts.md)
 - [Incremental](docs/incremental.md)
-
-ADRs:
-
 - [ADR-0001 Embedded Hive Metastore Constraints](docs/adr/0001-embedded-hive-metastore-constraints.md)
 - [ADR-0002 Contract-Driven Schema Governance](docs/adr/0002-contract-driven-schema-governance.md)
 - [ADR-0003 Incremental Merge and Reconciliation](docs/adr/0003-incremental-merge-reconciliation.md)
