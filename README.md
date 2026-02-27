@@ -43,6 +43,8 @@ make fmt
 make lint
 make test
 make check
+make doctor
+make verify
 make run YEAR=2024 MONTH=1
 make inspect
 make reset

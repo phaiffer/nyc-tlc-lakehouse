@@ -3,15 +3,17 @@
 ## Standard Local Run
 
 ```bash
-make venv
+make setup
+make doctor
 make download YEAR=2024 MONTH=1
-make run-all YEAR=2024 MONTH=1
+make run YEAR=2024 MONTH=1
 make inspect
 ```
 
 ## Release-Gate Validation Run
 
 ```bash
+make check
 python orchestration/local/run_pipeline.py reset
 python orchestration/local/run_pipeline.py run-all --year 2024 --month 1
 python orchestration/local/run_pipeline.py run-all --year 2024 --month 1
@@ -52,6 +54,7 @@ Quality tables use controlled recreate behavior on schema conflict to keep rerun
 make fmt
 make lint
 make test
+make verify
 make smoke
 make run-local YEAR=2024 MONTH=1
 ```

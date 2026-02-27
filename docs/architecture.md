@@ -12,6 +12,38 @@ The orchestration entrypoint is:
 
 - `orchestration/local/run_pipeline.py`
 
+## Architecture Diagram (Text)
+
+```text
+NYC TLC Parquet (monthly)
+          |
+          v
+  bronze.events_raw
+  - deterministic casts
+  - source metadata
+          |
+          v
+  silver.trips_clean
+  - canonical trip model
+  - contract enforcement + quarantine
+  - incremental merge (PK=trip_id, watermark=updated_at)
+          |
+          v
+  gold.fct_trips_daily + dimensions
+  - daily KPI fact + reference dimensions
+  - incremental merge (PK=trip_date,vendor_id, watermark=trip_date)
+          |
+          v
+ quality.violations_summary
+ quality.pipeline_metrics
+ quality.drift_events
+ quality.drift_baseline_metrics
+
+Storage/Catalog:
+- Managed Delta tables under .local/spark-warehouse
+- Embedded Hive metastore under .local/metastore_db
+```
+
 ## Data Layers
 
 ### Bronze

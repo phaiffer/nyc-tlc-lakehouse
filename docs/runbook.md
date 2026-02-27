@@ -74,8 +74,10 @@ Managed Delta tables:
 ## Makefile Shortcuts
 
 ```bash
+make doctor
+make verify
 make download YEAR=2024 MONTH=1
-make run-all YEAR=2024 MONTH=1
+make run YEAR=2024 MONTH=1
 make inspect
 make reset
 ```
@@ -89,5 +91,9 @@ make reset
 - Native Hadoop warning (`Unable to load native-hadoop library`): normal for local Linux usage.
 - Metastore mismatch when using a separate `pyspark` shell:
   - use `run_pipeline.py inspect` or `ci/scripts/open_local_spark.py` instead of a raw shell.
+- Spark SQL catalog inspection syntax:
+  - use `spark.sql("SHOW DATABASES").show()` (plural `DATABASES`)
+  - use `spark.sql("SHOW TABLES IN silver").show()`
+  - run `make doctor` first to confirm local metastore/warehouse paths.
 - Quality table type conflict after schema drift:
   - rerun with `run-quality --reset`; quality tables auto-drop/recreate on compatible drift errors.
