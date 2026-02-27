@@ -42,3 +42,7 @@ Implementation notes:
 - Drift events for Gold now use `avg_fare_per_trip_ratio` instead of `avg_fare_amount_ratio`.
 - Non-applicable Gold metrics are no longer emitted by design.
 - This is backward-compatible for pipeline execution, with intentional metric-semantics correction for observability consumers.
+
+## Cold-Start Semantics Update
+
+On baseline cold-start (for example after `make reset`), baseline initialization is now represented with `event_type=baseline_initialized` and `severity=info`. It is persisted for auditability, but no longer counted as drift detection. Drift summaries now explicitly report `drift_detected_count` and `baseline_initialized_count`, and `events_emitted` reflects only detected drift events.
