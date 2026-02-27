@@ -214,6 +214,7 @@ def _write_drift_events(
             StructField("run_id", StringType(), nullable=False),
             StructField("window_year", IntegerType(), nullable=True),
             StructField("window_month", IntegerType(), nullable=True),
+            StructField("event_type", StringType(), nullable=False),
             StructField("metric_name", StringType(), nullable=False),
             StructField("severity", StringType(), nullable=False),
             StructField("baseline_value", StringType(), nullable=True),
@@ -233,6 +234,7 @@ def _write_drift_events(
         "run_ts",
         "window_year",
         "window_month",
+        "event_type",
         "metric_name",
         "severity",
         "baseline_value",
@@ -379,7 +381,8 @@ def detect_and_record_drift(
         dataset=dataset,
     )
 
-    events: list[tuple[Any, ...]] = []
+    drift_events: list[tuple[Any, ...]] = []
+    baseline_initialized_events: list[tuple[Any, ...]] = []
     if baseline is not None:
         baseline_distribution = json.loads(baseline.get("passenger_distribution_json") or "{}")
 
@@ -425,12 +428,13 @@ def detect_and_record_drift(
             if severity is None:
                 continue
 
-            events.append(
+            drift_events.append(
                 (
                     dataset,
                     run_id,
                     int(window_year) if window_year is not None else None,
                     int(window_month) if window_month is not None else None,
+                    "drift_detected",
                     metric_name,
                     severity,
                     str(baseline_value) if baseline_value is not None else None,
@@ -455,12 +459,13 @@ def detect_and_record_drift(
                 error_threshold=distribution_error,
             )
             if distribution_severity is not None:
-                events.append(
+                drift_events.append(
                     (
                         dataset,
                         run_id,
                         int(window_year) if window_year is not None else None,
                         int(window_month) if window_month is not None else None,
+                        "drift_detected",
                         distribution_metric,
                         distribution_severity,
                         _to_json(baseline_distribution),
@@ -472,13 +477,14 @@ def detect_and_record_drift(
                     )
                 )
     else:
-        events.append(
+        baseline_initialized_events.append(
             (
                 dataset,
                 run_id,
                 int(window_year) if window_year is not None else None,
                 int(window_month) if window_month is not None else None,
-                "baseline_bootstrap",
+                "baseline_initialized",
+                "baseline_initialized",
                 "info",
                 None,
                 None,
@@ -495,10 +501,11 @@ def detect_and_record_drift(
             )
         )
 
+    all_events = [*drift_events, *baseline_initialized_events]
     _write_drift_events(
         spark,
         drift_events_table=drift_events_table,
-        events=events,
+        events=all_events,
     )
 
     _write_baseline_profile(
@@ -530,7 +537,10 @@ def detect_and_record_drift(
 
     return {
         "dataset": dataset,
-        "events_emitted": len(events),
+        "events_emitted": len(drift_events),
+        "drift_detected_count": len(drift_events),
+        "baseline_initialized_count": len(baseline_initialized_events),
+        "audit_events_written_count": len(all_events),
         "baseline_table": baseline_table,
         "drift_events_table": drift_events_table,
         "thresholds": selected_thresholds,
