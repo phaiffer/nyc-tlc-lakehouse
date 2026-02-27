@@ -10,12 +10,15 @@ MAX_INVALID_RATIO ?= 0.001
 WAREHOUSE_DIR ?=
 STRICT ?= 0
 STRICT_QUALITY ?= $(STRICT)
+SPARK_WAREHOUSE_PATH ?= $(if $(WAREHOUSE_DIR),$(WAREHOUSE_DIR),.local/spark-warehouse)
+SPARK_METASTORE_PATH ?= .local/metastore_db
+SPARK_LOCAL_PATH ?= .local/spark-local
 
 COMMON_ARGS = $(if $(YEAR),--year $(YEAR),) $(if $(MONTH),--month $(MONTH),) --max-invalid-ratio $(MAX_INVALID_RATIO) $(if $(WAREHOUSE_DIR),--warehouse-dir $(WAREHOUSE_DIR),)
 STRICT_QUALITY_ARG = $(if $(filter 1 true TRUE yes YES,$(STRICT_QUALITY)),--strict-quality,)
 INPUT_ARG = $(if $(INPUT_PARQUET),--input-parquet "$(INPUT_PARQUET)",)
 
-.PHONY: setup venv lint fmt fmt-check test check contracts smoke run-local local-smoke download inspect bronze silver gold quality run-all run full-run clean reset
+.PHONY: setup venv doctor verify lint fmt fmt-check test check contracts smoke run-local local-smoke download inspect bronze silver gold quality run-all run full-run clean reset
 
 setup:
 	@echo "[setup] ensuring virtual environment at $(VENV_DIR)"
@@ -31,6 +34,22 @@ setup:
 
 venv:
 	@$(MAKE) setup
+
+doctor:
+	@echo "[doctor] environment diagnostics"
+	@echo "repo=$(CURDIR)"
+	@echo "python=$(PYTHON)"
+	@$(PYTHON) --version
+	@echo "java=$$(java -version 2>&1 | head -n 1 || echo 'not-found')"
+	@echo "year=$(YEAR) month=$(MONTH) strict=$(STRICT_QUALITY)"
+	@echo "warehouse_dir=$(SPARK_WAREHOUSE_PATH)"
+	@echo "metastore_dir=$(SPARK_METASTORE_PATH)"
+	@echo "spark_local_dir=$(SPARK_LOCAL_PATH)"
+	@echo "warehouse_exists=$$(if [ -d \"$(SPARK_WAREHOUSE_PATH)\" ]; then echo yes; else echo no; fi)"
+	@echo "metastore_exists=$$(if [ -d \"$(SPARK_METASTORE_PATH)\" ]; then echo yes; else echo no; fi)"
+	@echo "spark_local_exists=$$(if [ -d \"$(SPARK_LOCAL_PATH)\" ]; then echo yes; else echo no; fi)"
+
+verify: doctor check
 
 lint:
 	@echo "[lint] running ruff check"
