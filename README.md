@@ -25,23 +25,27 @@ Data flow:
    - `gold.dim_payment_type`
    - `gold.dim_rate_code`
 
-## Quickstart
+## Quickstart (Make Entrypoint)
 
 ```bash
-make venv
+make setup
 make download YEAR=2024 MONTH=1
-make run-all YEAR=2024 MONTH=1
+make run YEAR=2024 MONTH=1
 make inspect
 ```
 
-Key local commands:
+Core developer targets:
 
 ```bash
 make fmt
+make fmt-check
 make lint
 make test
+make check
+make reset
 make smoke
-make run-local YEAR=2024 MONTH=1
+make run YEAR=2024 MONTH=1
+make inspect
 ```
 
 ## Local Execution (Release-Gate Path)
@@ -77,6 +81,15 @@ Merge behavior:
 - implicit schema evolution disabled (`mergeSchema=false`, `autoMerge=false`)
 - explicit schema mismatch handling with controlled table recreate when needed
 
+## Data Contracts
+
+Contracts are defined in `contracts/{bronze,silver,gold}` and validated in CI.
+
+- `version` is mandatory and used for schema governance.
+- Breaking changes require version bump (enforced by `ci/scripts/detect_contract_breaking_changes.py`).
+- Silver/Gold contracts define `primary_key`, `watermark`, and `late_arrival_days`.
+- Expectation rules support severity (`error`, `warn`, `info`) for quality behavior.
+
 ## Quality Gates
 
 Quality gates write severity-aware rule summaries to `quality.violations_summary`.
@@ -91,6 +104,34 @@ Quarantine records include:
 Drift detection is configurable at:
 
 - `config/drift_thresholds.yml`
+
+## Example Spark SQL Queries
+
+```sql
+-- Bronze: monthly volume by source file
+SELECT source_file, COUNT(*) AS rows
+FROM bronze.events_raw
+GROUP BY source_file
+ORDER BY rows DESC;
+
+-- Silver: daily clean trip volume
+SELECT pickup_date, COUNT(*) AS trips
+FROM silver.trips_clean
+GROUP BY pickup_date
+ORDER BY pickup_date;
+
+-- Gold: top revenue days
+SELECT trip_date, vendor_id, trips, total_fare
+FROM gold.fct_trips_daily
+ORDER BY total_fare DESC
+LIMIT 20;
+
+-- Quality: failed rules by severity
+SELECT severity, rule_name, failed_count, run_ts
+FROM quality.violations_summary
+WHERE passed = false
+ORDER BY run_ts DESC, severity;
+```
 
 ## Documentation
 

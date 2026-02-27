@@ -24,15 +24,19 @@ jobs:
 
       - name: Lint (ruff)
         run: |
-          make lint
+          python -m ruff check .
 
       - name: Format check (ruff)
         run: |
           python -m ruff format --check .
 
+      - name: Compile all Python files
+        run: |
+          python -m compileall .
+
       - name: Unit and integration tests
         run: |
-          make test
+          python -m pytest -q
 
       - name: Validate contracts
         run: |

@@ -11,7 +11,9 @@ COMMON_ARGS = $(if $(YEAR),--year $(YEAR),) $(if $(MONTH),--month $(MONTH),) --m
 STRICT_QUALITY_ARG = $(if $(filter 1 true TRUE yes YES,$(STRICT_QUALITY)),--strict-quality,)
 INPUT_ARG = $(if $(INPUT_PARQUET),--input-parquet "$(INPUT_PARQUET)",)
 
-.PHONY: venv lint fmt test contracts smoke run-local local-smoke download inspect bronze silver gold quality run-all full-run clean reset
+.PHONY: setup venv lint fmt fmt-check test check contracts smoke run-local local-smoke download inspect bronze silver gold quality run-all run full-run clean reset
+
+setup: venv
 
 venv:
 	python3 -m venv .venv
@@ -24,8 +26,13 @@ lint:
 fmt:
 	$(PYTHON) -m ruff format .
 
+fmt-check:
+	$(PYTHON) -m ruff format --check .
+
 test:
 	$(PYTHON) -m pytest -q
+
+check: fmt-check lint test
 
 contracts:
 	$(PYTHON) ci/scripts/validate_contracts.py
@@ -59,6 +66,8 @@ quality:
 
 run-all:
 	$(PYTHON) orchestration/local/run_pipeline.py run-all $(INPUT_ARG) $(COMMON_ARGS) $(STRICT_QUALITY_ARG)
+
+run: run-all
 
 full-run: run-all
 
