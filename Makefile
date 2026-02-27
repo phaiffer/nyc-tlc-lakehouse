@@ -8,7 +8,8 @@ MONTH ?= 1
 OUTPUT_DIR ?= data/raw
 MAX_INVALID_RATIO ?= 0.001
 WAREHOUSE_DIR ?=
-STRICT_QUALITY ?= 0
+STRICT ?= 0
+STRICT_QUALITY ?= $(STRICT)
 
 COMMON_ARGS = $(if $(YEAR),--year $(YEAR),) $(if $(MONTH),--month $(MONTH),) --max-invalid-ratio $(MAX_INVALID_RATIO) $(if $(WAREHOUSE_DIR),--warehouse-dir $(WAREHOUSE_DIR),)
 STRICT_QUALITY_ARG = $(if $(filter 1 true TRUE yes YES,$(STRICT_QUALITY)),--strict-quality,)

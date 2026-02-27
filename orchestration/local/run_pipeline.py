@@ -71,6 +71,13 @@ LOCAL_METASTORE_WARN_NOTE = (
     "Local note: WARN messages about Hive SerDe compatibility for Delta tables are expected when "
     "using Spark + Delta + embedded Hive metastore."
 )
+STRICT_MODE_NOTE = (
+    "Quality strict mode enabled: quality rules with severity=error fail the pipeline."
+)
+WARN_MODE_NOTE = (
+    "Quality warn mode enabled: quality rules with severity=error are recorded without failing the "
+    "run."
+)
 
 
 @dataclass(frozen=True)
@@ -534,6 +541,8 @@ def _run_quality(
     if reset:
         _drop_tables(spark, [VIOLATIONS_TABLE])
 
+    print(STRICT_MODE_NOTE if strict_quality else WARN_MODE_NOTE)
+
     _ensure_schema_exists(spark, "quality")
     contract = load_contract_by_dataset(REPO_ROOT, SILVER_TABLE)
     quality_rule_configs = {
@@ -739,8 +748,10 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_common_options(quality_parser)
     quality_parser.add_argument(
         "--strict-quality",
+        "--strict",
+        dest="strict_quality",
         action="store_true",
-        help="Fail when any quality-gate threshold is exceeded",
+        help="Fail pipeline when any severity=error quality-gate threshold is exceeded",
     )
 
     run_all_parser = subparsers.add_parser(
@@ -756,8 +767,10 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_common_options(run_all_parser)
     run_all_parser.add_argument(
         "--strict-quality",
+        "--strict",
+        dest="strict_quality",
         action="store_true",
-        help="Fail when any quality-gate threshold is exceeded",
+        help="Fail pipeline when any severity=error quality-gate threshold is exceeded",
     )
 
     reset_parser = subparsers.add_parser("reset", help="Drop bronze/silver/gold/quality tables")

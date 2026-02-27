@@ -5,6 +5,7 @@ from typing import Any
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql.types import IntegerType, StringType, StructField, StructType
 
 from pipelines.common.local_delta_writer import (
     is_schema_conflict_error,
@@ -23,9 +24,18 @@ def write_pipeline_metrics(
     metrics: dict[str, Any],
 ) -> None:
     metrics_json = json.dumps(metrics, sort_keys=True, default=str)
+    metrics_schema = StructType(
+        [
+            StructField("run_id", StringType(), nullable=False),
+            StructField("pipeline_name", StringType(), nullable=False),
+            StructField("dataset", StringType(), nullable=False),
+            StructField("contract_version", IntegerType(), nullable=False),
+            StructField("metrics_json", StringType(), nullable=False),
+        ]
+    )
     metrics_df = spark.createDataFrame(
         [(run_id, pipeline_name, dataset, int(contract_version), metrics_json)],
-        schema=["run_id", "pipeline_name", "dataset", "contract_version", "metrics_json"],
+        schema=metrics_schema,
     ).withColumn("run_ts", F.current_timestamp().cast("timestamp"))
 
     ordered_columns = [
