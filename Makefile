@@ -23,7 +23,7 @@ COMMON_ARGS = $(if $(YEAR),--year $(YEAR),) $(if $(MONTH),--month $(MONTH),) --m
 STRICT_QUALITY_ARG = $(if $(filter 1 true TRUE yes YES,$(STRICT_QUALITY)),--strict-quality,)
 INPUT_ARG = $(if $(INPUT_PARQUET),--input-parquet "$(INPUT_PARQUET)",)
 
-.PHONY: setup venv doctor verify lint fmt fmt-check test check docs-check compile contracts smoke run-local local-smoke download inspect bronze silver gold quality run-all run full-run clean reset dbt-parse dbt-run dbt-test dbt-docs
+.PHONY: setup venv doctor verify lint fmt fmt-check test check docs-check compile contracts smoke run-local local-smoke download inspect bronze silver gold quality run-all run full-run clean reset demo dbt-parse dbt-run dbt-test dbt-docs
 
 setup:
 	@echo "[setup] ensuring virtual environment at $(VENV_DIR)"
@@ -137,6 +137,16 @@ clean:
 reset:
 	@echo "[reset] dropping managed tables"
 	$(PYTHON) orchestration/local/run_pipeline.py reset $(COMMON_ARGS)
+
+demo:
+	@echo "[demo] running local end-to-end demo for YEAR=$(YEAR) MONTH=$(MONTH)"
+	@$(MAKE) setup
+	@$(MAKE) download YEAR=$(YEAR) MONTH=$(MONTH) OUTPUT_DIR="$(OUTPUT_DIR)"
+	@$(MAKE) reset YEAR=$(YEAR) MONTH=$(MONTH) MAX_INVALID_RATIO=$(MAX_INVALID_RATIO) WAREHOUSE_DIR="$(WAREHOUSE_DIR)"
+	@$(MAKE) run YEAR=$(YEAR) MONTH=$(MONTH) MAX_INVALID_RATIO=$(MAX_INVALID_RATIO) WAREHOUSE_DIR="$(WAREHOUSE_DIR)" STRICT_QUALITY="$(STRICT_QUALITY)" INPUT_PARQUET="$(INPUT_PARQUET)"
+	@$(MAKE) inspect WAREHOUSE_DIR="$(WAREHOUSE_DIR)"
+	@echo "[demo] generating KPI report"
+	$(PYTHON) scripts/demo_report.py --year $(YEAR) --month $(MONTH) $(if $(WAREHOUSE_DIR),--warehouse-dir "$(WAREHOUSE_DIR)",)
 
 dbt-parse:
 	@command -v dbt >/dev/null 2>&1 || { \
