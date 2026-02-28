@@ -13,6 +13,11 @@ STRICT_QUALITY ?= $(STRICT)
 SPARK_WAREHOUSE_PATH ?= $(if $(WAREHOUSE_DIR),$(WAREHOUSE_DIR),.local/spark-warehouse)
 SPARK_METASTORE_PATH ?= .local/metastore_db
 SPARK_LOCAL_PATH ?= .local/spark-local
+DBT_DIR := dbt/lakehouse_dbt
+DBT_PROFILES_DIR := $(DBT_DIR)/profiles
+DBT_TARGET := local
+DBT_PROFILE_FILE := $(DBT_PROFILES_DIR)/profiles.yml
+DBT_PROJECT_ARGS := --project-dir $(DBT_DIR) --profiles-dir $(DBT_PROFILES_DIR) --target $(DBT_TARGET)
 
 COMMON_ARGS = $(if $(YEAR),--year $(YEAR),) $(if $(MONTH),--month $(MONTH),) --max-invalid-ratio $(MAX_INVALID_RATIO) $(if $(WAREHOUSE_DIR),--warehouse-dir $(WAREHOUSE_DIR),)
 STRICT_QUALITY_ARG = $(if $(filter 1 true TRUE yes YES,$(STRICT_QUALITY)),--strict-quality,)
@@ -134,33 +139,69 @@ reset:
 	$(PYTHON) orchestration/local/run_pipeline.py reset $(COMMON_ARGS)
 
 dbt-parse:
-	@if command -v dbt >/dev/null 2>&1; then \
-		echo "[dbt-parse] running dbt parse in dbt/lakehouse_dbt"; \
-		cd dbt/lakehouse_dbt && dbt parse; \
-	else \
-		echo "[dbt-parse] dbt CLI not found; skipping optional target"; \
-	fi
+	@command -v dbt >/dev/null 2>&1 || { \
+		echo "[dbt-parse] dbt CLI not found."; \
+		echo "[dbt-parse] install dbt-core and a compatible adapter (example: pip install dbt-spark)."; \
+		exit 1; \
+	}
+	@test -f "$(DBT_PROFILE_FILE)" || { \
+		echo "[dbt-parse] missing dbt profile file: $(DBT_PROFILE_FILE)"; \
+		exit 1; \
+	}
+	@echo "[dbt-parse] dbt parse $(DBT_PROJECT_ARGS)"
+	@dbt parse $(DBT_PROJECT_ARGS) || { \
+		status=$$?; \
+		echo "[dbt-parse] parse failed. Ensure a compatible adapter is installed for target '$(DBT_TARGET)' (example: dbt-spark)."; \
+		exit $$status; \
+	}
 
 dbt-run:
-	@if command -v dbt >/dev/null 2>&1; then \
-		echo "[dbt-run] running dbt run in dbt/lakehouse_dbt"; \
-		cd dbt/lakehouse_dbt && dbt run; \
-	else \
-		echo "[dbt-run] dbt CLI not found; skipping optional target"; \
-	fi
+	@command -v dbt >/dev/null 2>&1 || { \
+		echo "[dbt-run] dbt CLI not found."; \
+		echo "[dbt-run] install dbt-core and a compatible adapter (example: pip install dbt-spark)."; \
+		exit 1; \
+	}
+	@test -f "$(DBT_PROFILE_FILE)" || { \
+		echo "[dbt-run] missing dbt profile file: $(DBT_PROFILE_FILE)"; \
+		exit 1; \
+	}
+	@echo "[dbt-run] dbt run $(DBT_PROJECT_ARGS)"
+	@dbt run $(DBT_PROJECT_ARGS) || { \
+		status=$$?; \
+		echo "[dbt-run] run failed. Confirm the adapter, profile values, and that the Spark pipeline outputs already exist."; \
+		exit $$status; \
+	}
 
 dbt-test:
-	@if command -v dbt >/dev/null 2>&1; then \
-		echo "[dbt-test] running dbt test in dbt/lakehouse_dbt"; \
-		cd dbt/lakehouse_dbt && dbt test; \
-	else \
-		echo "[dbt-test] dbt CLI not found; skipping optional target"; \
-	fi
+	@command -v dbt >/dev/null 2>&1 || { \
+		echo "[dbt-test] dbt CLI not found."; \
+		echo "[dbt-test] install dbt-core and a compatible adapter (example: pip install dbt-spark)."; \
+		exit 1; \
+	}
+	@test -f "$(DBT_PROFILE_FILE)" || { \
+		echo "[dbt-test] missing dbt profile file: $(DBT_PROFILE_FILE)"; \
+		exit 1; \
+	}
+	@echo "[dbt-test] dbt test $(DBT_PROJECT_ARGS)"
+	@dbt test $(DBT_PROJECT_ARGS) || { \
+		status=$$?; \
+		echo "[dbt-test] test failed. Confirm the adapter, profile values, and that dbt models were built first."; \
+		exit $$status; \
+	}
 
 dbt-docs:
-	@if command -v dbt >/dev/null 2>&1; then \
-		echo "[dbt-docs] running dbt docs generate in dbt/lakehouse_dbt"; \
-		cd dbt/lakehouse_dbt && dbt docs generate; \
-	else \
-		echo "[dbt-docs] dbt CLI not found; skipping optional target"; \
-	fi
+	@command -v dbt >/dev/null 2>&1 || { \
+		echo "[dbt-docs] dbt CLI not found."; \
+		echo "[dbt-docs] install dbt-core and a compatible adapter (example: pip install dbt-spark)."; \
+		exit 1; \
+	}
+	@test -f "$(DBT_PROFILE_FILE)" || { \
+		echo "[dbt-docs] missing dbt profile file: $(DBT_PROFILE_FILE)"; \
+		exit 1; \
+	}
+	@echo "[dbt-docs] dbt docs generate $(DBT_PROJECT_ARGS)"
+	@dbt docs generate $(DBT_PROJECT_ARGS) || { \
+		status=$$?; \
+		echo "[dbt-docs] docs generation failed. Confirm the adapter and profile settings are valid."; \
+		exit $$status; \
+	}
