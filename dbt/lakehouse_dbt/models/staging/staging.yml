@@ -1,0 +1,20 @@
+version: 2
+
+models:
+  - name: stg_silver_trips_clean
+    description: "Staging model over silver.trips_clean with normalized IDs and explicit casts."
+    columns:
+      - name: trip_id
+        tests:
+          - not_null
+          - unique
+      - name: pickup_date
+        tests:
+          - not_null
+      - name: vendor_id
+        tests:
+          - accepted_values:
+              values: ['1', '2']
+              quote: true
+              config:
+                severity: warn

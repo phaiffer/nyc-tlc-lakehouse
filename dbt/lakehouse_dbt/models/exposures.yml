@@ -1,0 +1,15 @@
+version: 2
+
+exposures:
+  - name: portfolio_dashboard
+    label: Portfolio Dashboard
+    type: dashboard
+    maturity: medium
+    description: "Executive-style dashboard for daily revenue and vendor activity monitoring."
+    depends_on:
+      - ref('mart_daily_revenue')
+      - ref('mart_vendor_profile')
+      - source('gold', 'fct_trips_daily')
+    owner:
+      name: Analytics Engineering
+      email: analytics@example.com

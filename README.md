@@ -143,6 +143,8 @@ rm -rf data/raw/*
 - [Baseline Report](docs/BASELINE_REPORT.md)
 - [Portfolio Hardening Report](docs/PORTFOLIO_HARDENING_REPORT.md)
 - [Improvements Backlog](docs/IMPROVEMENTS_BACKLOG.md)
+- [Empty Directories Policy](docs/EMPTY_DIRECTORIES_POLICY.md)
+- [Optional dbt Analytics Layer](dbt/lakehouse_dbt/README.md)
 - [ADR-0001 Embedded Hive Metastore Constraints](docs/adr/0001-embedded-hive-metastore-constraints.md)
 - [ADR-0002 Contract-Driven Schema Governance](docs/adr/0002-contract-driven-schema-governance.md)
 - [ADR-0003 Incremental Merge and Reconciliation](docs/adr/0003-incremental-merge-reconciliation.md)

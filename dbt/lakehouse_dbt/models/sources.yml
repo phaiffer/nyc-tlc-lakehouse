@@ -1,0 +1,31 @@
+version: 2
+
+sources:
+  - name: silver
+    description: "Contract-enforced Silver layer from the local Spark pipeline."
+    schema: silver
+    tables:
+      - name: trips_clean
+        description: "Canonical trip-level dataset produced by the Silver stage."
+        columns:
+          - name: trip_id
+            tests:
+              - not_null
+              - unique
+          - name: pickup_date
+            tests:
+              - not_null
+
+  - name: gold
+    description: "Aggregated Gold layer from the local Spark pipeline."
+    schema: gold
+    tables:
+      - name: fct_trips_daily
+        description: "Daily KPI fact table produced by the Gold stage."
+        columns:
+          - name: trip_date
+            tests:
+              - not_null
+          - name: vendor_id
+            tests:
+              - not_null

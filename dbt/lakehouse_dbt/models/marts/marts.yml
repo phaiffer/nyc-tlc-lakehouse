@@ -1,0 +1,32 @@
+version: 2
+
+models:
+  - name: mart_daily_revenue
+    description: "Daily vendor KPI mart derived from the Silver staging layer."
+    columns:
+      - name: daily_vendor_key
+        tests:
+          - not_null
+          - unique
+      - name: trip_date
+        tests:
+          - not_null
+      - name: vendor_id
+        tests:
+          - not_null
+      - name: trips
+        tests:
+          - not_null
+
+  - name: mart_vendor_profile
+    description: "Vendor activity profile for portfolio dashboard consumption."
+    columns:
+      - name: vendor_id
+        tests:
+          - not_null
+          - unique
+      - name: vendor_tier
+        tests:
+          - accepted_values:
+              values: ['known_tlc_vendor', 'other_vendor']
+              quote: true

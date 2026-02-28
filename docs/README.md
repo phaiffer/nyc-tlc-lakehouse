@@ -31,4 +31,9 @@ Use this page as the entrypoint for repository documentation.
 - [Validation Report](VALIDATION_REPORT.md)
 - [Requirements Backlog](REQUIREMENTS_BACKLOG.md)
 - [Improvements Backlog](IMPROVEMENTS_BACKLOG.md)
+- [Empty Directories Policy](EMPTY_DIRECTORIES_POLICY.md)
 - [Portfolio Hardening Report](PORTFOLIO_HARDENING_REPORT.md)
+
+## Optional Analytics Engineering Layer
+
+- [dbt Lakehouse Project](../dbt/lakehouse_dbt/README.md)

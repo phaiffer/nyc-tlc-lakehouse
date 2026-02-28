@@ -1,0 +1,25 @@
+name: lakehouse_dbt
+version: 1.0.0
+config-version: 2
+
+profile: lakehouse_dbt
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+analysis-paths: ["analysis"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  lakehouse_dbt:
+    staging:
+      +materialized: view
+      +tags: ["staging", "silver"]
+    marts:
+      +materialized: table
+      +tags: ["marts", "gold"]
