@@ -20,13 +20,7 @@ Local Spark + Delta Lakehouse project built as a production-style portfolio impl
 
 ## Quickstart
 
-One command chain:
-
-```bash
-make setup && make download YEAR=2024 MONTH=1 && make run YEAR=2024 MONTH=1 && make inspect
-```
-
-Step-by-step:
+Supported local flow:
 
 ```bash
 make setup
@@ -34,6 +28,7 @@ make download YEAR=2024 MONTH=1
 make reset
 make run YEAR=2024 MONTH=1
 make inspect
+make check
 ```
 
 ## Developer Workflow
@@ -105,6 +100,25 @@ The local metastore and warehouse used by the pipeline are under `.local/`:
 - `.local/spark-warehouse`
 - `.local/spark-local`
 
+## Output Locations And Cleanup
+
+- Local table outputs and catalog state:
+  - `.local/spark-warehouse`
+  - `.local/metastore_db`
+  - `.local/spark-local`
+- Downloaded monthly parquet:
+  - `data/raw/`
+- Optional filesystem snapshots (if used outside managed-table mode):
+  - `lakehouse/`
+
+Cleanup options:
+
+```bash
+make reset
+rm -rf .local/spark-warehouse .local/metastore_db .local/spark-local derby.log
+rm -rf data/raw/*
+```
+
 ## Troubleshooting
 
 - Correct Spark SQL syntax:
@@ -117,15 +131,21 @@ The local metastore and warehouse used by the pipeline are under `.local/`:
 
 ## Additional Documentation
 
+- [Documentation Index](docs/README.md)
 - [Architecture](docs/architecture.md)
 - [Operations](docs/operations.md)
+- [Runbook (How To Run)](docs/runbook.md)
 - [Data Quality](docs/data_quality.md)
 - [Semantic Model](docs/semantic_model.md)
 - [Contracts](docs/contracts.md)
 - [Incremental](docs/incremental.md)
 - [Drift Audit](docs/DRIFT_AUDIT.md)
 - [Baseline Report](docs/BASELINE_REPORT.md)
+- [Portfolio Hardening Report](docs/PORTFOLIO_HARDENING_REPORT.md)
 - [Improvements Backlog](docs/IMPROVEMENTS_BACKLOG.md)
 - [ADR-0001 Embedded Hive Metastore Constraints](docs/adr/0001-embedded-hive-metastore-constraints.md)
 - [ADR-0002 Contract-Driven Schema Governance](docs/adr/0002-contract-driven-schema-governance.md)
 - [ADR-0003 Incremental Merge and Reconciliation](docs/adr/0003-incremental-merge-reconciliation.md)
+- [ADR-0004 Local Hive Metastore and Delta Tables](docs/adr/0004-local-hive-metastore-delta-managed-tables.md)
+- [ADR-0005 Contracts and Quality Gate Enforcement](docs/adr/0005-contracts-and-quality-gate.md)
+- [ADR-0006 Drift Metrics by Grain](docs/adr/0006-drift-metrics-by-grain.md)
