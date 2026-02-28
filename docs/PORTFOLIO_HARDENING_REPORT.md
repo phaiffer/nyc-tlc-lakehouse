@@ -40,6 +40,14 @@ Skeleton-only signals:
 
 - `config/.gitkeep` is no longer needed because `config/` has active config files.
 
+## Phase 1 Findings (Paths and Actions)
+
+- `metastore_db/tmp` -> keep (runtime-only empty directory under ignored metastore path).
+- `spark-warehouse` -> keep untracked, explicitly ignored in `.gitignore` as a local Spark artifact.
+- `.gitkeep` placeholders -> none found; no placeholder-only tracked directories detected.
+- `docs/REQUIREMENTS_BACKLOG.md` and `docs/IMPROVEMENTS_BACKLOG.md` -> keep both; clarify scopes in the [Documentation Index](README.md) as release-scope backlog vs post-release roadmap.
+- `dbt/lakehouse_dbt/models/marts/mart_daily_revenue.sql` -> keep as trips-daily mart equivalent (`mart_trips_daily`) and document this mapping in dbt README.
+
 ## Local Artifact Directories That Must Stay Untracked
 
 - `.local/` (embedded metastore, local Spark temp, local managed-table warehouse)

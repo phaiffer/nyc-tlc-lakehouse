@@ -18,6 +18,23 @@ Local Spark + Delta Lakehouse project built as a production-style portfolio impl
 - Reference dimensions:
   - `gold.dim_vendor`, `gold.dim_payment_type`, `gold.dim_rate_code`
 
+```mermaid
+flowchart LR
+    A[Bronze<br/>bronze.events_raw] --> B[Silver<br/>silver.trips_clean]
+    B --> C[Gold<br/>gold.fct_trips_daily + dimensions]
+    C --> D[BI / Dashboards]
+    B --> E[Optional dbt Staging]
+    C --> F[Optional dbt Marts]
+    F --> D
+    G[Contracts<br/>contracts/*.yml] --> A
+    G --> B
+    G --> C
+    H[Quality Gate<br/>violations + quarantine] --> B
+    H --> C
+    I[Drift Monitoring<br/>events + baselines] --> B
+    I --> C
+```
+
 ## Quickstart
 
 Supported local flow:
@@ -146,6 +163,7 @@ rm -rf data/raw/*
 - [Portfolio Hardening Report](docs/PORTFOLIO_HARDENING_REPORT.md)
 - [Improvements Backlog](docs/IMPROVEMENTS_BACKLOG.md)
 - [Empty Directories Policy](docs/EMPTY_DIRECTORIES_POLICY.md)
+- [Troubleshooting](#troubleshooting)
 - [Optional dbt Analytics Layer](dbt/lakehouse_dbt/README.md)
 - [ADR-0001 Embedded Hive Metastore Constraints](docs/adr/0001-embedded-hive-metastore-constraints.md)
 - [ADR-0002 Contract-Driven Schema Governance](docs/adr/0002-contract-driven-schema-governance.md)

@@ -20,6 +20,7 @@ Why these adapters:
 - Silver managed table `silver.trips_clean` -> dbt `staging` model `stg_silver_trips_clean`
 - Gold managed table `gold.fct_trips_daily` -> conceptual source for downstream semantic consumption
 - dbt `marts` models -> optional analytics-serving layer for dashboards and BI
+- `models/marts/mart_daily_revenue.sql` is the trips-daily mart equivalent (`mart_trips_daily`) for this project
 
 ## What Is Included
 
@@ -47,6 +48,15 @@ dbt parse
 dbt run
 dbt test
 dbt docs generate
+```
+
+Optional Make targets (safe no-op when `dbt` CLI is not installed):
+
+```bash
+make dbt-parse
+make dbt-run
+make dbt-test
+make dbt-docs
 ```
 
 ## Notes

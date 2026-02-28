@@ -7,6 +7,7 @@ Use this page as the entrypoint for repository documentation.
 - [Architecture](architecture.md)
 - [Operations](operations.md)
 - [Runbook (How To Run)](runbook.md)
+- [Troubleshooting (Root README)](../README.md#troubleshooting)
 - [Incremental Processing](incremental.md)
 - [Semantic Model](semantic_model.md)
 
@@ -29,8 +30,8 @@ Use this page as the entrypoint for repository documentation.
 ## Validation and Planning
 
 - [Validation Report](VALIDATION_REPORT.md)
-- [Requirements Backlog](REQUIREMENTS_BACKLOG.md)
-- [Improvements Backlog](IMPROVEMENTS_BACKLOG.md)
+- [Requirements Backlog (current release hardening scope)](REQUIREMENTS_BACKLOG.md)
+- [Improvements Backlog (post-release roadmap)](IMPROVEMENTS_BACKLOG.md)
 - [Empty Directories Policy](EMPTY_DIRECTORIES_POLICY.md)
 - [Portfolio Hardening Report](PORTFOLIO_HARDENING_REPORT.md)
 
