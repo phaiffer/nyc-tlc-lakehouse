@@ -14,6 +14,7 @@ notebooks/spark-warehouse/
 
 dbt/lakehouse_dbt/target/
 dbt/lakehouse_dbt/dbt_packages/
+dbt/lakehouse_dbt/logs/
 *.duckdb
 
 .DS_Store
