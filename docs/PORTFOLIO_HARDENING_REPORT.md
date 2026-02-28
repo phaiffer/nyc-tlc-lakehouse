@@ -13,122 +13,101 @@ Mode: Enterprise portfolio hardening
 ├── ci/{schemas,scripts}
 ├── config
 ├── contracts/{bronze,silver,gold}
-├── data/raw
+├── data/raw                    # ignored local downloads
 ├── dbt/lakehouse_dbt
-├── docs/adr
-├── notebooks
+├── docs/{adr,...}
 ├── orchestration/local
 ├── pipelines/{common,silver_transform,gold_marts}
 ├── quality/{validators,observability,reconciliation}
 ├── scripts
 ├── tests/{unit,integration,contract_regression}
-└── runtime-local (ignored): .local, lakehouse, metastore_db, spark-warehouse
+├── notebooks                   # includes optional exploration notebooks
+└── runtime-local (ignored): .local/, lakehouse/, metastore_db/, spark-warehouse/
 ```
 
 ## Empty Directories and Skeleton Signals
 
-Empty directories detected in workspace at the start of this hardening pass:
+Observed in workspace during this pass (excluding `.git/`, `.venv/`, caches):
 
-- `.ipynb_checkpoints`
-- `ci/github-actions`
-- `ci/test-data`
-- `dbt/lakehouse_dbt`
-- `great_expectations`
-- `orchestration/airflow`
-- `orchestration/schedules`
-- `pipelines/bronze_ingest`
-- `quality/expectations`
-- `reports`
-- `src/bronze`
-- `src/common`
-- `src/gold`
-- `src/ingestion`
-- `src/silver`
+- `metastore_db/tmp` (runtime/local artifact path)
+- `spark-warehouse` (runtime/local artifact path)
 
-Initial policy decision:
+Tracked repository scope:
 
-- `dbt/lakehouse_dbt`: implement as optional but real dbt analytics engineering layer (P1 high-value).
-- Runtime-only / local-only folders: keep untracked and explicitly documented as generated artifacts.
-- Placeholder directories with no immediate runtime value: either remove from workspace scope or document ownership/purpose through concise README notes where keeping the folder helps future contributors.
+- No tracked empty directories were found.
+
+Skeleton-only signals:
+
+- `config/.gitkeep` is no longer needed because `config/` has active config files.
 
 ## Local Artifact Directories That Must Stay Untracked
 
-- `.local/` (embedded metastore, spark local temp, local warehouse)
-- `lakehouse/` (filesystem output snapshots)
+- `.local/` (embedded metastore, local Spark temp, local managed-table warehouse)
+- `lakehouse/` (filesystem Delta snapshots for local experimentation)
 - `metastore_db/` (Derby metastore state)
-- `spark-warehouse/` and `notebooks/spark-warehouse/`
-- `data/raw/` (downloaded raw parquet)
+- `spark-warehouse/` and `notebooks/spark-warehouse/` (Spark warehouse outputs)
+- `data/raw/` (downloaded parquet inputs)
 - `reports/` (generated outputs)
 - `derby.log`
 
-Status at inventory time:
-
-- These paths exist locally and are already configured to be ignored in `.gitignore`.
-- Optics/documentation still need a clearer explanation of lifecycle and cleanup commands.
-
 ## Current State Summary (What Works End-to-End)
 
-- Local orchestration supports full flow: `setup`, `download`, `reset`, `run`, `inspect`.
-- Quality gates are integrated in code and CI (`contracts`, schema checks, drift events, quarantine, metrics).
-- `make check` baseline execution passes (`fmt-check`, `lint`, `pytest`).
-- ADR baseline already exists for metastore constraints, contract governance, and incremental merge.
+- Local orchestration supports full flow: `make setup`, `make download`, `make reset`, `make run`, `make inspect`.
+- `make check` covers format, lint, and tests (`fmt-check`, `lint`, `test`).
+- Lightweight quality extras exist: `make docs-check` (markdown links) and `make compile` (fast compile sanity).
+- Data contracts and quality governance are active (quarantine, violations summary, drift metrics).
+- Optional dbt analytics engineering layer exists with sources/models/tests/exposure/macros.
+- ADR set documents metastore topology, contract/quality gate policy, and drift metrics by grain.
 
-## Gaps, Risks, and Portfolio Optics Issues
+## Gaps, Risks, and Confusing Optics
 
-- No `docs/README.md` index; discoverability is weaker than expected for portfolio review.
-- Root `README.md` does not present a single explicit supported run flow including `check` and cleanup in one place.
-- Empty/skeleton directories create unclear ownership and can look unfinished.
-- `dbt/lakehouse_dbt` is fully ignored and empty; this hides an opportunity for analytics engineering demonstration.
-- ADR set does not explicitly document Silver-vs-Gold drift grain decision in a dedicated record.
-- Makefile lacks a fast compile sanity target and a docs-focused check target.
+- Hardening report and empty-directory policy documents were stale and not aligned with current repository state.
+- `spark-warehouse/` existed locally but was not explicitly ignored in `.gitignore`, which could create accidental tracking noise.
+- `config/.gitkeep` remained from a prior skeleton phase and can read as unfinished scaffolding.
+- dbt execution remains intentionally out of CI because adapter/runtime provisioning is environment-specific.
 
 ## Prioritized Backlog
 
 ### P0 (Implement Now)
 
-- Add `docs/README.md` documentation index with stable relative links.
-- Tighten root `README.md` supported local flow, expected warnings, outputs location, and cleanup steps.
-- Add ADRs explicitly covering:
-  - local Hive metastore + Delta tables,
-  - contracts + quality gate,
-  - drift metrics by grain (Silver vs Gold).
-- Establish empty-directory handling policy (remove or document purpose).
-- Add lightweight Makefile quality targets (`docs-check` if lightweight, compile sanity).
+- Refresh hardening report with current-state inventory, risks, and backlog.
+- Refresh empty-directory policy based on actual current directory state.
+- Align ignore rules for all known local Spark artifacts (`spark-warehouse/`).
+- Remove obsolete placeholder marker files where directories are already active.
 
-### P1 (Implement Now if lightweight and no heavy infra)
+### P1 (Implemented, Keep Improving)
 
-- Create a real optional dbt project in `dbt/lakehouse_dbt`:
-  - models (`staging`, `marts`), sources, tests, exposures, and helper macros,
-  - clear README describing adapter expectations and mapping from Silver/Gold outputs.
+- Keep optional dbt layer in place as portfolio analytics engineering evidence.
+- Expand dbt model/test coverage as new marts are added.
 
 ### P2 (Roadmap)
 
-- CI job for dbt parsing/tests once a stable local adapter strategy is selected.
-- Optional markdown lint standardization across docs.
-- Ownership metadata expansion (`CODEOWNERS`, docs owners matrix) if repository governance broadens.
+- Add optional CI stage for `dbt parse`/`dbt test` once adapter/runtime strategy is standardized.
+- Add ownership metadata (`CODEOWNERS` and docs ownership matrix) if team scope expands.
+- Consider lightweight markdown lint style checks in CI if doc volume grows.
 
 ## Scope Commitment for This Pass
 
-### Will Implement Now
+### Implementing Now
 
-- Phase 1 docs optics and ADR additions.
-- Phase 2 empty-directory policy with concrete handling for `dbt/lakehouse_dbt`.
-- Phase 3 optional dbt layer as a real, documented skeleton (no fake CI execution).
-- Phase 4 Makefile hardening for docs-check and compile sanity.
-- Phase 5 validation run results and final update of this report.
+- Phase 0 inventory and requirements refresh report.
+- Empty-directory policy refresh.
+- Repo hygiene cleanup for local artifact ignore paths.
+- Validation runs and final report update.
 
-### Will Remain Roadmap
+### Remaining as Roadmap
 
-- Full dbt execution in CI tied to live Spark/Databricks adapter infrastructure.
-- Broader governance expansion beyond lightweight portfolio-focused hardening.
+- dbt execution in CI with adapter-specific infrastructure.
+- Expanded repository governance metadata (owners/escalation matrices).
 
-## Validation Commands (To Execute in Phase 5)
+## Validation Commands (Phase 5)
 
 ```bash
 make check
 make reset && make run YEAR=2024 MONTH=1 && make inspect
 ```
 
-## Implementation Log (To Update in Phase 5)
+## Implementation Log (In Progress)
 
-- Pending implementation.
+- Updated report to reflect current state and concrete backlog.
+- Pending: run validation commands and append execution summary.
