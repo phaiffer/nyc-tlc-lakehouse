@@ -107,7 +107,36 @@ make check
 make reset && make run YEAR=2024 MONTH=1 && make inspect
 ```
 
-## Implementation Log (In Progress)
+## Implementation Log (Completed)
 
-- Updated report to reflect current state and concrete backlog.
-- Pending: run validation commands and append execution summary.
+Implemented in this pass:
+
+- Refreshed this report with accurate inventory, current-state summary, and prioritized backlog.
+- Refreshed empty-directory policy to match actual current directory state.
+- Added explicit ignore rule for root `spark-warehouse/` local artifact output.
+- Removed obsolete `config/.gitkeep` placeholder marker.
+- Updated root `README.md` artifact-location and cleanup guidance to include root `spark-warehouse`.
+
+## Validation Results
+
+Execution date: 2026-02-28
+
+`make check`:
+
+- `ruff format --check`: passed (`30 files already formatted`)
+- `ruff check`: passed (`All checks passed!`)
+- `pytest -q`: passed (`13 passed`)
+
+`make reset && make run YEAR=2024 MONTH=1 && make inspect`:
+
+- Reset dropped managed Bronze/Silver/Gold/Quality tables successfully.
+- Full run completed with expected local Spark/Hive warnings only (SerDe/native Hadoop/loopback warnings).
+- Key pipeline outputs:
+  - Bronze rows: `2,964,606`
+  - Silver rows: `2,926,167`
+  - Gold rows: `85`
+  - Quality summary rows: `6`
+  - Drift events emitted: `0` (Silver), `0` (Gold)
+- Inspect confirmed expected databases and tables:
+  - Databases: `bronze`, `silver`, `gold`, `quality`, `default`
+  - Core tables: `bronze.events_raw`, `silver.trips_clean`, `gold.fct_trips_daily`, `gold.dim_vendor`, `gold.dim_payment_type`, `gold.dim_rate_code`, `quality.pipeline_metrics`, `quality.violations_summary`, `quality.drift_events`, `quality.drift_baseline_metrics`.
