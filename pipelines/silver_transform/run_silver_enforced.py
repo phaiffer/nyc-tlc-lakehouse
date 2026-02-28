@@ -157,8 +157,9 @@ def run_silver_enforced(
     metrics_table: str = "quality.pipeline_metrics",
     year: int | None = None,
     month: int | None = None,
+    run_id: str | None = None,
 ) -> None:
-    run_id = str(uuid.uuid4())
+    effective_run_id = run_id or str(uuid.uuid4())
 
     contract = load_contract_by_dataset(Path(repo_root), contract_dataset)
     if not contract.primary_key:
@@ -187,7 +188,7 @@ def run_silver_enforced(
         quarantine_table=quarantine_table,
         dataset=contract.dataset,
         contract_version=contract.version,
-        run_id=run_id,
+        run_id=effective_run_id,
     )
 
     merge_metrics = incremental_merge(
@@ -207,7 +208,7 @@ def run_silver_enforced(
             source_table=reconciliation_source_view,
             target_table=output_table,
             max_diff_ratio=reconciliation_max_diff_ratio,
-            run_id=run_id,
+            run_id=effective_run_id,
             strict=strict_reconciliation,
         )
     finally:
@@ -227,7 +228,7 @@ def run_silver_enforced(
     write_pipeline_metrics(
         spark,
         metrics_table=metrics_table,
-        run_id=run_id,
+        run_id=effective_run_id,
         pipeline_name="silver_transform_enforced",
         dataset=contract.dataset,
         contract_version=contract.version,
@@ -241,7 +242,7 @@ def run_silver_enforced(
     print(
         "Silver final run summary:",
         {
-            "run_id": run_id,
+            "run_id": effective_run_id,
             "dataset": contract.dataset,
             "contract_version": contract.version,
             "output_table": output_table,

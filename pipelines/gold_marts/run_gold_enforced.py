@@ -165,8 +165,9 @@ def run_gold_enforced(
     dim_vendor_table: str = "gold.dim_vendor",
     dim_payment_type_table: str = "gold.dim_payment_type",
     dim_rate_code_table: str = "gold.dim_rate_code",
+    run_id: str | None = None,
 ) -> None:
-    run_id = str(uuid.uuid4())
+    effective_run_id = run_id or str(uuid.uuid4())
 
     contract = load_contract_by_dataset(Path(repo_root), contract_dataset)
     if not contract.primary_key:
@@ -196,7 +197,7 @@ def run_gold_enforced(
         quarantine_table=quarantine_table,
         dataset=contract.dataset,
         contract_version=contract.version,
-        run_id=run_id,
+        run_id=effective_run_id,
     )
 
     merge_metrics = incremental_merge(
@@ -230,7 +231,7 @@ def run_gold_enforced(
             source_table=reconciliation_source_view,
             target_table=reconciliation_target_view,
             max_diff_ratio=reconciliation_max_diff_ratio,
-            run_id=run_id,
+            run_id=effective_run_id,
             strict=strict_reconciliation,
         )
     finally:
@@ -251,7 +252,7 @@ def run_gold_enforced(
     write_pipeline_metrics(
         spark,
         metrics_table=metrics_table,
-        run_id=run_id,
+        run_id=effective_run_id,
         pipeline_name="gold_marts_enforced",
         dataset=contract.dataset,
         contract_version=contract.version,
@@ -285,7 +286,7 @@ def run_gold_enforced(
     print(
         "Gold final run summary:",
         {
-            "run_id": run_id,
+            "run_id": effective_run_id,
             "dataset": contract.dataset,
             "contract_version": contract.version,
             "output_table": output_table,

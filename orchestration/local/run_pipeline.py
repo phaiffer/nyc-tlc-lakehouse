@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import shutil
 import sys
+import time
 import urllib.request
 import uuid
 from dataclasses import dataclass
@@ -37,6 +38,7 @@ from pipelines.common.local_delta_writer import (  # noqa: E402
     write_delta_table_safe,
 )
 from pipelines.common.schema_normalizer import normalize_bronze_schema  # noqa: E402
+from pipelines.common.structured_logging import JsonPipelineLogger  # noqa: E402
 from pipelines.gold_marts.run_gold_enforced import run_gold_enforced  # noqa: E402
 from pipelines.silver_transform.run_silver_enforced import run_silver_enforced  # noqa: E402
 from quality.observability.drift_detector import detect_and_record_drift  # noqa: E402
@@ -82,6 +84,7 @@ DEFAULT_METASTORE_DIR = REPO_ROOT / ".local" / "metastore_db"
 DEFAULT_SPARK_LOCAL_DIR = REPO_ROOT / ".local" / "spark-local"
 DEFAULT_DOWNLOAD_DIR = REPO_ROOT / "data" / "raw"
 DEFAULT_CHECKPOINT_DIR = REPO_ROOT / ".local" / "checkpoints"
+DEFAULT_LOG_DIR = REPO_ROOT / ".local" / "logs"
 LOCAL_METASTORE_WARN_NOTE = (
     "Local note: WARN messages about Hive SerDe compatibility for Delta tables are expected when "
     "using Spark + Delta + embedded Hive metastore."
@@ -100,6 +103,43 @@ class LocalSparkPaths:
     warehouse_dir: Path
     metastore_dir: Path
     spark_local_dir: Path
+
+
+def _build_json_logger(*, run_id: str) -> JsonPipelineLogger:
+    return JsonPipelineLogger(
+        run_id=run_id,
+        log_file=DEFAULT_LOG_DIR / f"pipeline_{run_id}.jsonl",
+    )
+
+
+def _log_event(
+    logger: JsonPipelineLogger | None,
+    *,
+    level: str,
+    stage: str,
+    step: str,
+    message: str,
+    year: int | None = None,
+    month: int | None = None,
+    duration_ms: int | None = None,
+    row_counts: dict[str, int] | None = None,
+    invalid_ratio: float | None = None,
+    exception: str | None = None,
+) -> None:
+    if logger is None:
+        return
+    logger.event(
+        level=level,
+        stage=stage,
+        step=step,
+        message=message,
+        year=year,
+        month=month,
+        duration_ms=duration_ms,
+        row_counts=row_counts,
+        invalid_ratio=invalid_ratio,
+        exception=exception,
+    )
 
 
 def _quote_identifier(identifier: str) -> str:
@@ -430,49 +470,87 @@ def _run_bronze(
     year: int | None,
     month: int | None,
     reset: bool,
+    run_id: str | None = None,
+    logger: JsonPipelineLogger | None = None,
 ) -> None:
+    stage_start = time.perf_counter()
+    _log_event(
+        logger,
+        level="INFO",
+        stage="bronze",
+        step="start",
+        message="Starting Bronze stage",
+        year=year,
+        month=month,
+    )
     if reset:
         _drop_tables(spark, [BRONZE_TABLE])
 
-    raw_df = spark.read.parquet(str(input_parquet.resolve()))
-    canonical_df, schema_report = normalize_bronze_schema(raw_df)
-    casted_timestamp_ntz_columns = schema_report.casted_timestamp_ntz_columns
-    casted_fixed_columns = schema_report.casted_fixed_columns
-    if casted_timestamp_ntz_columns:
-        print(
-            "Cast timestamp_ntz columns to timestamp for local Hive metastore compatibility:"
-            f" {len(casted_timestamp_ntz_columns)} columns -> "
-            f"{', '.join(casted_timestamp_ntz_columns)}"
+    try:
+        raw_df = spark.read.parquet(str(input_parquet.resolve()))
+        canonical_df, schema_report = normalize_bronze_schema(raw_df)
+        casted_timestamp_ntz_columns = schema_report.casted_timestamp_ntz_columns
+        casted_fixed_columns = schema_report.casted_fixed_columns
+        if casted_timestamp_ntz_columns:
+            print(
+                "Cast timestamp_ntz columns to timestamp for local Hive metastore compatibility:"
+                f" {len(casted_timestamp_ntz_columns)} columns -> "
+                f"{', '.join(casted_timestamp_ntz_columns)}"
+            )
+
+        if casted_fixed_columns:
+            print(
+                "Applied deterministic Bronze column casts for rerun stability:"
+                f" {len(casted_fixed_columns)} columns -> "
+                f"{', '.join(casted_fixed_columns)}"
+            )
+
+        filtered_df = _apply_optional_month_filter(canonical_df, year=year, month=month)
+
+        mtime_utc = datetime.fromtimestamp(input_parquet.stat().st_mtime, tz=timezone.utc).replace(
+            tzinfo=None
+        )
+        bronze_df = filtered_df.withColumn(
+            "ingest_ts", F.lit(mtime_utc).cast("timestamp")
+        ).withColumn("source_file", F.lit(input_parquet.name))
+
+        write_delta_table_safe(
+            spark,
+            table_name=BRONZE_TABLE,
+            source_df=bronze_df,
+            mode="overwrite",
+            overwrite_schema=True,
+            force_recreate=True,
+            recreate_on_schema_conflict=True,
         )
 
-    if casted_fixed_columns:
-        print(
-            "Applied deterministic Bronze column casts for rerun stability:"
-            f" {len(casted_fixed_columns)} columns -> "
-            f"{', '.join(casted_fixed_columns)}"
+        bronze_rows = spark.table(BRONZE_TABLE).count()
+        print("Bronze table ready:", BRONZE_TABLE)
+        print("Bronze rows:", bronze_rows)
+        _log_event(
+            logger,
+            level="INFO",
+            stage="bronze",
+            step="complete",
+            message="Completed Bronze stage",
+            year=year,
+            month=month,
+            duration_ms=int((time.perf_counter() - stage_start) * 1000),
+            row_counts={"bronze_rows": int(bronze_rows)},
         )
-
-    filtered_df = _apply_optional_month_filter(canonical_df, year=year, month=month)
-
-    mtime_utc = datetime.fromtimestamp(input_parquet.stat().st_mtime, tz=timezone.utc).replace(
-        tzinfo=None
-    )
-    bronze_df = filtered_df.withColumn("ingest_ts", F.lit(mtime_utc).cast("timestamp")).withColumn(
-        "source_file", F.lit(input_parquet.name)
-    )
-
-    write_delta_table_safe(
-        spark,
-        table_name=BRONZE_TABLE,
-        source_df=bronze_df,
-        mode="overwrite",
-        overwrite_schema=True,
-        force_recreate=True,
-        recreate_on_schema_conflict=True,
-    )
-
-    print("Bronze table ready:", BRONZE_TABLE)
-    print("Bronze rows:", spark.table(BRONZE_TABLE).count())
+    except Exception as exc:
+        _log_event(
+            logger,
+            level="ERROR",
+            stage="bronze",
+            step="error",
+            message="Bronze stage failed",
+            year=year,
+            month=month,
+            duration_ms=int((time.perf_counter() - stage_start) * 1000),
+            exception=str(exc),
+        )
+        raise
 
 
 def _run_silver(
@@ -482,25 +560,67 @@ def _run_silver(
     year: int | None,
     month: int | None,
     reset: bool,
+    run_id: str | None = None,
+    logger: JsonPipelineLogger | None = None,
 ) -> None:
+    stage_start = time.perf_counter()
+    _log_event(
+        logger,
+        level="INFO",
+        stage="silver",
+        step="start",
+        message="Starting Silver stage",
+        year=year,
+        month=month,
+        invalid_ratio=max_invalid_ratio,
+    )
     if reset:
         _drop_tables(spark, [SILVER_TABLE, QUARANTINE_TABLE, METRICS_TABLE])
 
-    run_silver_enforced(
-        spark=spark,
-        repo_root=str(REPO_ROOT),
-        contract_dataset=SILVER_TABLE,
-        input_table=BRONZE_TABLE,
-        output_table=SILVER_TABLE,
-        quarantine_table=QUARANTINE_TABLE,
-        max_invalid_ratio=max_invalid_ratio,
-        metrics_table=METRICS_TABLE,
-        year=year,
-        month=month,
-    )
+    try:
+        run_silver_enforced(
+            spark=spark,
+            repo_root=str(REPO_ROOT),
+            contract_dataset=SILVER_TABLE,
+            input_table=BRONZE_TABLE,
+            output_table=SILVER_TABLE,
+            quarantine_table=QUARANTINE_TABLE,
+            max_invalid_ratio=max_invalid_ratio,
+            metrics_table=METRICS_TABLE,
+            year=year,
+            month=month,
+            run_id=run_id,
+        )
 
-    print("Silver table ready:", SILVER_TABLE)
-    print("Silver rows:", spark.table(SILVER_TABLE).count())
+        silver_rows = spark.table(SILVER_TABLE).count()
+        print("Silver table ready:", SILVER_TABLE)
+        print("Silver rows:", silver_rows)
+        _log_event(
+            logger,
+            level="INFO",
+            stage="silver",
+            step="complete",
+            message="Completed Silver stage",
+            year=year,
+            month=month,
+            duration_ms=int((time.perf_counter() - stage_start) * 1000),
+            row_counts={"silver_rows": int(silver_rows)},
+            invalid_ratio=max_invalid_ratio,
+        )
+    except Exception as exc:
+        _log_event(
+            logger,
+            level="ERROR",
+            stage="silver",
+            step="error",
+            message="Silver stage failed",
+            year=year,
+            month=month,
+            duration_ms=int((time.perf_counter() - stage_start) * 1000),
+            invalid_ratio=max_invalid_ratio,
+            exception=str(exc),
+        )
+        raise
 
 
 def _run_gold(
@@ -510,7 +630,20 @@ def _run_gold(
     year: int | None,
     month: int | None,
     reset: bool,
+    run_id: str | None = None,
+    logger: JsonPipelineLogger | None = None,
 ) -> None:
+    stage_start = time.perf_counter()
+    _log_event(
+        logger,
+        level="INFO",
+        stage="gold",
+        step="start",
+        message="Starting Gold stage",
+        year=year,
+        month=month,
+        invalid_ratio=max_invalid_ratio,
+    )
     if reset:
         _drop_tables(
             spark,
@@ -524,24 +657,53 @@ def _run_gold(
             ],
         )
 
-    run_gold_enforced(
-        spark=spark,
-        repo_root=str(REPO_ROOT),
-        contract_dataset=GOLD_TABLE,
-        input_table=SILVER_TABLE,
-        output_table=GOLD_TABLE,
-        quarantine_table=QUARANTINE_TABLE,
-        metrics_table=METRICS_TABLE,
-        max_invalid_ratio=max_invalid_ratio,
-        year=year,
-        month=month,
-        dim_vendor_table=DIM_VENDOR_TABLE,
-        dim_payment_type_table=DIM_PAYMENT_TYPE_TABLE,
-        dim_rate_code_table=DIM_RATE_CODE_TABLE,
-    )
+    try:
+        run_gold_enforced(
+            spark=spark,
+            repo_root=str(REPO_ROOT),
+            contract_dataset=GOLD_TABLE,
+            input_table=SILVER_TABLE,
+            output_table=GOLD_TABLE,
+            quarantine_table=QUARANTINE_TABLE,
+            metrics_table=METRICS_TABLE,
+            max_invalid_ratio=max_invalid_ratio,
+            year=year,
+            month=month,
+            dim_vendor_table=DIM_VENDOR_TABLE,
+            dim_payment_type_table=DIM_PAYMENT_TYPE_TABLE,
+            dim_rate_code_table=DIM_RATE_CODE_TABLE,
+            run_id=run_id,
+        )
 
-    print("Gold table ready:", GOLD_TABLE)
-    print("Gold rows:", spark.table(GOLD_TABLE).count())
+        gold_rows = spark.table(GOLD_TABLE).count()
+        print("Gold table ready:", GOLD_TABLE)
+        print("Gold rows:", gold_rows)
+        _log_event(
+            logger,
+            level="INFO",
+            stage="gold",
+            step="complete",
+            message="Completed Gold stage",
+            year=year,
+            month=month,
+            duration_ms=int((time.perf_counter() - stage_start) * 1000),
+            row_counts={"gold_rows": int(gold_rows)},
+            invalid_ratio=max_invalid_ratio,
+        )
+    except Exception as exc:
+        _log_event(
+            logger,
+            level="ERROR",
+            stage="gold",
+            step="error",
+            message="Gold stage failed",
+            year=year,
+            month=month,
+            duration_ms=int((time.perf_counter() - stage_start) * 1000),
+            invalid_ratio=max_invalid_ratio,
+            exception=str(exc),
+        )
+        raise
 
 
 def _run_quality(
@@ -552,7 +714,20 @@ def _run_quality(
     year: int | None,
     month: int | None,
     reset: bool,
+    run_id: str | None = None,
+    logger: JsonPipelineLogger | None = None,
 ) -> None:
+    stage_start = time.perf_counter()
+    _log_event(
+        logger,
+        level="INFO",
+        stage="quality",
+        step="start",
+        message="Starting Quality stage",
+        year=year,
+        month=month,
+        invalid_ratio=max_invalid_ratio,
+    )
     if reset:
         _drop_tables(spark, [VIOLATIONS_TABLE])
 
@@ -568,7 +743,7 @@ def _run_quality(
         for rule in contract.expectations
         if str(rule.get("type", "")).strip().lower() in {"quality_gate", "quality_rule"}
     }
-    run_id = str(uuid.uuid4())
+    effective_run_id = run_id or str(uuid.uuid4())
     run_ts = datetime.now(tz=timezone.utc).replace(tzinfo=None)
 
     try:
@@ -580,7 +755,7 @@ def _run_quality(
             thresholds={"max_invalid_ratio": max_invalid_ratio},
             strict=strict_quality,
             dataset=contract.dataset,
-            run_id=run_id,
+            run_id=effective_run_id,
             run_ts=run_ts,
             window_year=year,
             window_month=month,
@@ -601,7 +776,7 @@ def _run_quality(
             thresholds={"max_invalid_ratio": max_invalid_ratio},
             strict=strict_quality,
             dataset=contract.dataset,
-            run_id=run_id,
+            run_id=effective_run_id,
             run_ts=run_ts,
             window_year=year,
             window_month=month,
@@ -613,7 +788,7 @@ def _run_quality(
         spark,
         source_df=spark.table(SILVER_TABLE),
         dataset=SILVER_TABLE,
-        run_id=run_id,
+        run_id=effective_run_id,
         run_ts=run_ts,
         window_year=year,
         window_month=month,
@@ -628,7 +803,7 @@ def _run_quality(
         spark,
         source_df=spark.table(GOLD_TABLE),
         dataset=GOLD_TABLE,
-        run_id=run_id,
+        run_id=effective_run_id,
         run_ts=run_ts,
         window_year=year,
         window_month=month,
@@ -646,10 +821,23 @@ def _run_quality(
     )
 
     print("Quality table ready:", VIOLATIONS_TABLE)
-    print("Quality rows:", spark.table(VIOLATIONS_TABLE).count())
+    quality_rows = spark.table(VIOLATIONS_TABLE).count()
+    print("Quality rows:", quality_rows)
     print("Quality summary:", result)
     print("Drift summary (silver):", silver_drift_summary)
     print("Drift summary (gold):", gold_drift_summary)
+    _log_event(
+        logger,
+        level="INFO",
+        stage="quality",
+        step="complete",
+        message="Completed Quality stage",
+        year=year,
+        month=month,
+        duration_ms=int((time.perf_counter() - stage_start) * 1000),
+        row_counts={"quality_rows": int(quality_rows)},
+        invalid_ratio=max_invalid_ratio,
+    )
 
 
 def _run_all_month(
@@ -660,6 +848,8 @@ def _run_all_month(
     max_invalid_ratio: float,
     strict_quality: bool,
     input_parquet: Path | None = None,
+    run_id: str | None = None,
+    logger: JsonPipelineLogger | None = None,
 ) -> None:
     if input_parquet is None:
         if year is None or month is None:
@@ -673,6 +863,8 @@ def _run_all_month(
         year=year,
         month=month,
         reset=False,
+        run_id=run_id,
+        logger=logger,
     )
     _run_silver(
         spark,
@@ -680,6 +872,8 @@ def _run_all_month(
         year=year,
         month=month,
         reset=False,
+        run_id=run_id,
+        logger=logger,
     )
     _run_gold(
         spark,
@@ -687,15 +881,32 @@ def _run_all_month(
         year=year,
         month=month,
         reset=False,
+        run_id=run_id,
+        logger=logger,
     )
-    _run_quality(
-        spark,
-        max_invalid_ratio=max_invalid_ratio,
-        strict_quality=strict_quality,
-        year=year,
-        month=month,
-        reset=False,
-    )
+    try:
+        _run_quality(
+            spark,
+            max_invalid_ratio=max_invalid_ratio,
+            strict_quality=strict_quality,
+            year=year,
+            month=month,
+            reset=False,
+            run_id=run_id,
+            logger=logger,
+        )
+    except Exception as exc:
+        _log_event(
+            logger,
+            level="ERROR",
+            stage="quality",
+            step="error",
+            message="Quality stage failed",
+            year=year,
+            month=month,
+            exception=str(exc),
+        )
+        raise
 
 
 def _run_backfill(
@@ -776,6 +987,15 @@ def _run_backfill(
     checkpoint.setdefault("months_planned", months_planned)
     checkpoint.setdefault("months_completed", [])
     checkpoint.setdefault("current_month", None)
+    backfill_run_id = str(checkpoint["run_id"])
+    logger = _build_json_logger(run_id=backfill_run_id)
+    _log_event(
+        logger,
+        level="INFO",
+        stage="backfill",
+        step="start",
+        message="Starting backfill orchestration",
+    )
 
     pending_month = next_incomplete_month(
         months_planned=checkpoint["months_planned"],
@@ -792,11 +1012,25 @@ def _run_backfill(
             settings_snapshot["range_to"],
         )
         print("Checkpoint:", checkpoint_file)
+        _log_event(
+            logger,
+            level="INFO",
+            stage="backfill",
+            step="complete",
+            message="Backfill already complete",
+        )
         return
 
     if reset:
         _drop_tables(spark, ALL_TABLES)
         print("Backfill reset applied before first pending month")
+        _log_event(
+            logger,
+            level="INFO",
+            stage="backfill",
+            step="reset",
+            message="Applied table reset before backfill",
+        )
 
     resolved_single_input: Path | None = None
     if input_parquet:
@@ -819,6 +1053,15 @@ def _run_backfill(
 
             run_year, run_month = parse_month_token(month_value, flag_name="checkpoint month")
             print(f"Backfill processing month: {month_value}")
+            _log_event(
+                logger,
+                level="INFO",
+                stage="backfill",
+                step="month_start",
+                message=f"Processing backfill month {month_value}",
+                year=run_year,
+                month=run_month,
+            )
             _run_all_month(
                 spark,
                 year=run_year,
@@ -826,6 +1069,8 @@ def _run_backfill(
                 max_invalid_ratio=max_invalid_ratio,
                 strict_quality=strict_quality,
                 input_parquet=resolved_single_input,
+                run_id=backfill_run_id,
+                logger=logger,
             )
 
             completed.append(month_value)
@@ -833,9 +1078,26 @@ def _run_backfill(
             checkpoint["months_completed"] = completed
             checkpoint["current_month"] = None
             write_checkpoint(checkpoint_file=checkpoint_file, payload=checkpoint)
-    except Exception:
+            _log_event(
+                logger,
+                level="INFO",
+                stage="backfill",
+                step="month_complete",
+                message=f"Completed backfill month {month_value}",
+                year=run_year,
+                month=run_month,
+            )
+    except Exception as exc:
         checkpoint["finished_at"] = None
         write_checkpoint(checkpoint_file=checkpoint_file, payload=checkpoint)
+        _log_event(
+            logger,
+            level="ERROR",
+            stage="backfill",
+            step="error",
+            message="Backfill failed",
+            exception=str(exc),
+        )
         raise
 
     checkpoint["finished_at"] = utc_now_iso()
@@ -847,6 +1109,14 @@ def _run_backfill(
         f"run_id={checkpoint['run_id']}",
         f"months_completed={len(completed)}",
         f"checkpoint={checkpoint_file}",
+    )
+    _log_event(
+        logger,
+        level="INFO",
+        stage="backfill",
+        step="complete",
+        message="Backfill completed",
+        row_counts={"months_completed": len(completed)},
     )
 
 
@@ -1091,6 +1361,14 @@ def main() -> None:
     month = getattr(args, "month", None)
     _validate_month_args(year=year, month=month)
 
+    logged_commands = {"run-bronze", "run-silver", "run-gold", "run-quality", "run-all"}
+    orchestration_run_id = str(uuid.uuid4()) if args.command in logged_commands else None
+    logger = (
+        _build_json_logger(run_id=orchestration_run_id)
+        if orchestration_run_id is not None
+        else None
+    )
+
     resolved_input_parquet: Path | None = None
     if args.command in {"run-bronze", "run-all"}:
         resolved_input_parquet = _resolve_input_parquet(
@@ -1102,6 +1380,15 @@ def main() -> None:
     paths = _resolve_spark_paths(warehouse_dir=getattr(args, "warehouse_dir", None))
     spark = _build_spark_session(paths=paths)
     print(LOCAL_METASTORE_WARN_NOTE)
+    _log_event(
+        logger,
+        level="INFO",
+        stage="orchestration",
+        step="command_start",
+        message=f"Starting command '{args.command}'",
+        year=year,
+        month=month,
+    )
 
     try:
         if args.command == "inspect":
@@ -1139,6 +1426,17 @@ def main() -> None:
                 year=args.year,
                 month=args.month,
                 reset=args.reset,
+                run_id=orchestration_run_id,
+                logger=logger,
+            )
+            _log_event(
+                logger,
+                level="INFO",
+                stage="orchestration",
+                step="command_complete",
+                message="Completed command 'run-bronze'",
+                year=year,
+                month=month,
             )
             return
 
@@ -1149,6 +1447,17 @@ def main() -> None:
                 year=args.year,
                 month=args.month,
                 reset=args.reset,
+                run_id=orchestration_run_id,
+                logger=logger,
+            )
+            _log_event(
+                logger,
+                level="INFO",
+                stage="orchestration",
+                step="command_complete",
+                message="Completed command 'run-silver'",
+                year=year,
+                month=month,
             )
             return
 
@@ -1159,17 +1468,52 @@ def main() -> None:
                 year=args.year,
                 month=args.month,
                 reset=args.reset,
+                run_id=orchestration_run_id,
+                logger=logger,
+            )
+            _log_event(
+                logger,
+                level="INFO",
+                stage="orchestration",
+                step="command_complete",
+                message="Completed command 'run-gold'",
+                year=year,
+                month=month,
             )
             return
 
         if args.command == "run-quality":
-            _run_quality(
-                spark,
-                max_invalid_ratio=args.max_invalid_ratio,
-                strict_quality=args.strict_quality,
-                year=args.year,
-                month=args.month,
-                reset=args.reset,
+            try:
+                _run_quality(
+                    spark,
+                    max_invalid_ratio=args.max_invalid_ratio,
+                    strict_quality=args.strict_quality,
+                    year=args.year,
+                    month=args.month,
+                    reset=args.reset,
+                    run_id=orchestration_run_id,
+                    logger=logger,
+                )
+            except Exception as exc:
+                _log_event(
+                    logger,
+                    level="ERROR",
+                    stage="quality",
+                    step="error",
+                    message="Quality stage failed",
+                    year=year,
+                    month=month,
+                    exception=str(exc),
+                )
+                raise
+            _log_event(
+                logger,
+                level="INFO",
+                stage="orchestration",
+                step="command_complete",
+                message="Completed command 'run-quality'",
+                year=year,
+                month=month,
             )
             return
 
@@ -1185,6 +1529,17 @@ def main() -> None:
                 max_invalid_ratio=args.max_invalid_ratio,
                 strict_quality=args.strict_quality,
                 input_parquet=resolved_input_parquet,
+                run_id=orchestration_run_id,
+                logger=logger,
+            )
+            _log_event(
+                logger,
+                level="INFO",
+                stage="orchestration",
+                step="command_complete",
+                message="Completed command 'run-all'",
+                year=year,
+                month=month,
             )
             return
 
@@ -1207,6 +1562,18 @@ def main() -> None:
             return
 
         raise ValueError(f"Unsupported command: {args.command}")
+    except Exception as exc:
+        _log_event(
+            logger,
+            level="ERROR",
+            stage="orchestration",
+            step="command_error",
+            message=f"Command '{args.command}' failed",
+            year=year,
+            month=month,
+            exception=str(exc),
+        )
+        raise
     finally:
         spark.stop()
 
