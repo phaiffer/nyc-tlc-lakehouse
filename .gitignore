@@ -9,6 +9,7 @@ reports/
 metastore_db/
 .local/
 derby.log
+spark-warehouse/
 notebooks/spark-warehouse/
 
 dbt/lakehouse_dbt/target/

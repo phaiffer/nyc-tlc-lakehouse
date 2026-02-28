@@ -99,6 +99,7 @@ The local metastore and warehouse used by the pipeline are under `.local/`:
 - `.local/metastore_db`
 - `.local/spark-warehouse`
 - `.local/spark-local`
+- `spark-warehouse` (root-level fallback artifact path in some local Spark sessions)
 
 ## Output Locations And Cleanup
 
@@ -106,6 +107,7 @@ The local metastore and warehouse used by the pipeline are under `.local/`:
   - `.local/spark-warehouse`
   - `.local/metastore_db`
   - `.local/spark-local`
+  - `spark-warehouse`
 - Downloaded monthly parquet:
   - `data/raw/`
 - Optional filesystem snapshots (if used outside managed-table mode):
@@ -115,7 +117,7 @@ Cleanup options:
 
 ```bash
 make reset
-rm -rf .local/spark-warehouse .local/metastore_db .local/spark-local derby.log
+rm -rf .local/spark-warehouse .local/metastore_db .local/spark-local spark-warehouse derby.log
 rm -rf data/raw/*
 ```
 
