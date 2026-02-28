@@ -18,7 +18,7 @@ COMMON_ARGS = $(if $(YEAR),--year $(YEAR),) $(if $(MONTH),--month $(MONTH),) --m
 STRICT_QUALITY_ARG = $(if $(filter 1 true TRUE yes YES,$(STRICT_QUALITY)),--strict-quality,)
 INPUT_ARG = $(if $(INPUT_PARQUET),--input-parquet "$(INPUT_PARQUET)",)
 
-.PHONY: setup venv doctor verify lint fmt fmt-check test check contracts smoke run-local local-smoke download inspect bronze silver gold quality run-all run full-run clean reset
+.PHONY: setup venv doctor verify lint fmt fmt-check test check docs-check compile contracts smoke run-local local-smoke download inspect bronze silver gold quality run-all run full-run clean reset
 
 setup:
 	@echo "[setup] ensuring virtual environment at $(VENV_DIR)"
@@ -68,6 +68,14 @@ test:
 	$(PYTHON) -m pytest -q
 
 check: fmt-check lint test
+
+docs-check:
+	@echo "[docs-check] validating local markdown links"
+	$(PYTHON) ci/scripts/check_markdown_links.py
+
+compile:
+	@echo "[compile] running python -m compileall . (runtime directories excluded)"
+	$(PYTHON) -m compileall . -q -x '(^|/)(\\.git|\\.venv|\\.local|lakehouse|metastore_db|spark-warehouse|notebooks/spark-warehouse|dbt/lakehouse_dbt/target|dbt/lakehouse_dbt/dbt_packages)(/|$$)'
 
 contracts:
 	@echo "[contracts] validating data contracts"
