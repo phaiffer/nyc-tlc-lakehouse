@@ -18,7 +18,7 @@ COMMON_ARGS = $(if $(YEAR),--year $(YEAR),) $(if $(MONTH),--month $(MONTH),) --m
 STRICT_QUALITY_ARG = $(if $(filter 1 true TRUE yes YES,$(STRICT_QUALITY)),--strict-quality,)
 INPUT_ARG = $(if $(INPUT_PARQUET),--input-parquet "$(INPUT_PARQUET)",)
 
-.PHONY: setup venv doctor verify lint fmt fmt-check test check docs-check compile contracts smoke run-local local-smoke download inspect bronze silver gold quality run-all run full-run clean reset
+.PHONY: setup venv doctor verify lint fmt fmt-check test check docs-check compile contracts smoke run-local local-smoke download inspect bronze silver gold quality run-all run full-run clean reset dbt-parse dbt-run dbt-test dbt-docs
 
 setup:
 	@echo "[setup] ensuring virtual environment at $(VENV_DIR)"
@@ -132,3 +132,35 @@ clean:
 reset:
 	@echo "[reset] dropping managed tables"
 	$(PYTHON) orchestration/local/run_pipeline.py reset $(COMMON_ARGS)
+
+dbt-parse:
+	@if command -v dbt >/dev/null 2>&1; then \
+		echo "[dbt-parse] running dbt parse in dbt/lakehouse_dbt"; \
+		cd dbt/lakehouse_dbt && dbt parse; \
+	else \
+		echo "[dbt-parse] dbt CLI not found; skipping optional target"; \
+	fi
+
+dbt-run:
+	@if command -v dbt >/dev/null 2>&1; then \
+		echo "[dbt-run] running dbt run in dbt/lakehouse_dbt"; \
+		cd dbt/lakehouse_dbt && dbt run; \
+	else \
+		echo "[dbt-run] dbt CLI not found; skipping optional target"; \
+	fi
+
+dbt-test:
+	@if command -v dbt >/dev/null 2>&1; then \
+		echo "[dbt-test] running dbt test in dbt/lakehouse_dbt"; \
+		cd dbt/lakehouse_dbt && dbt test; \
+	else \
+		echo "[dbt-test] dbt CLI not found; skipping optional target"; \
+	fi
+
+dbt-docs:
+	@if command -v dbt >/dev/null 2>&1; then \
+		echo "[dbt-docs] running dbt docs generate in dbt/lakehouse_dbt"; \
+		cd dbt/lakehouse_dbt && dbt docs generate; \
+	else \
+		echo "[dbt-docs] dbt CLI not found; skipping optional target"; \
+	fi
