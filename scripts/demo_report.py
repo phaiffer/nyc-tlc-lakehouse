@@ -1,19 +1,22 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from orchestration.local.run_pipeline import (
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from orchestration.local.run_pipeline import (  # noqa: E402
     BRONZE_TABLE,
     GOLD_TABLE,
     SILVER_TABLE,
     _build_spark_session,
     _resolve_spark_paths,
 )
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _require_month(*, year: int, month: int) -> None:
