@@ -64,6 +64,53 @@ make reset
 
 Defaults: `YEAR=2024`, `MONTH=1`.
 
+## Optional dbt Layer Workflow
+
+The dbt layer is optional and not part of `make check` or CI gates.
+
+Prerequisites:
+
+- Run the Spark pipeline first so dbt sources exist:
+
+```bash
+make reset
+make run YEAR=2024 MONTH=1
+make inspect
+```
+
+- Install dbt plus a compatible adapter (example local adapter):
+
+```bash
+pip install dbt-core dbt-spark
+```
+
+Run optional dbt targets:
+
+```bash
+make dbt-parse
+make dbt-run
+make dbt-test
+make dbt-docs
+```
+
+Default Make variables:
+
+- `DBT_DIR=dbt/lakehouse_dbt`
+- `DBT_PROFILES_DIR=dbt/lakehouse_dbt/profiles`
+- `DBT_TARGET=local`
+
+Overrides:
+
+```bash
+make dbt-parse DBT_TARGET=local
+make dbt-run DBT_PROFILES_DIR=/absolute/path/to/profiles_dir
+```
+
+dbt models built by this project:
+
+- `stg_silver_trips_clean` (staging view from `silver.trips_clean`)
+- `mart_daily_revenue` and `mart_vendor_profile` (optional marts for BI/dashboard use)
+
 ## Outputs
 
 - `bronze.events_raw`: normalized raw source with ingest metadata.
@@ -147,6 +194,9 @@ rm -rf data/raw/*
   - `SHOW DATABASES`
   - `SHOW TABLES IN <db>`
 - If objects seem missing, run `make inspect` first and confirm you are querying the same embedded metastore under `.local/`.
+- If `make dbt-*` fails with `dbt CLI not found`, install `dbt-core` and an adapter (for local target: `dbt-spark`).
+- If dbt reports adapter errors (for example `Could not find adapter type spark`), install or activate the adapter and re-run `make dbt-parse`.
+- If dbt reports profile path issues, verify `dbt/lakehouse_dbt/profiles/profiles.yml` exists or override `DBT_PROFILES_DIR`.
 
 ## Additional Documentation
 
