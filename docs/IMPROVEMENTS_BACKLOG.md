@@ -12,6 +12,7 @@ This backlog captures deeper post-PR improvements beyond the current hardening s
 - Acceptance criteria: Every contract change is validated against downstream model expectations, and CI blocks incompatible changes without version bumps.
 
 ### 2) Structured Observability + Trace Correlation
+- Status: **Implemented (2026-02-28)**
 - Problem statement: Current logs and metrics are useful but not consistently structured for fleet-scale operations and run-to-run traceability.
 - Proposed approach: Add structured JSON logging with stable `run_id`, stage, severity, and table fields; emit OpenTelemetry-compatible spans around Bronze/Silver/Gold/Quality stages.
 - Expected impact: Better operational reliability and debugging speed.
@@ -19,6 +20,7 @@ This backlog captures deeper post-PR improvements beyond the current hardening s
 - Acceptance criteria: Each pipeline stage emits structured logs and trace metadata that can be correlated to `quality.pipeline_metrics`.
 
 ### 3) Incremental Backfill Orchestration
+- Status: **Implemented (2026-02-28)**
 - Problem statement: Backfills across multiple months currently require manual repetition and can introduce operational inconsistency.
 - Proposed approach: Add a backfill command for parameterized month ranges with checkpointed progress and resumability.
 - Expected impact: Better reliability and operator productivity.

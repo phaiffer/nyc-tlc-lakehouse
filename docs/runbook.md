@@ -28,6 +28,9 @@ Deterministic local runtime paths are configured by the CLI:
 - Spark warehouse: `.local/spark-warehouse`
 - Derby metastore: `.local/metastore_db`
 - Spark local dir: `.local/spark-local`
+- Structured pipeline logs: `.local/logs/pipeline_<run_id>.jsonl`
+- Backfill checkpoints: `.local/checkpoints/backfill_<run_id>.json`
+- Demo outputs: `.local/demo/demo_<run_id>.txt`
 
 Managed Delta tables:
 
@@ -58,6 +61,19 @@ Managed Delta tables:
 # End-to-end
 ./.venv/bin/python orchestration/local/run_pipeline.py run-all --year 2024 --month 1 --strict-quality
 
+# Month-range backfill (tuple form)
+./.venv/bin/python orchestration/local/run_pipeline.py run-backfill \
+  --from-year 2024 --from-month 1 \
+  --to-year 2024 --to-month 6
+
+# Month-range backfill (YYYY-MM form)
+./.venv/bin/python orchestration/local/run_pipeline.py run-backfill \
+  --from 2024-01 --to 2024-06
+
+# Force a fresh backfill run without resume
+./.venv/bin/python orchestration/local/run_pipeline.py run-backfill \
+  --from 2024-01 --to 2024-06 --no-resume
+
 # Inspect local catalog
 ./.venv/bin/python orchestration/local/run_pipeline.py inspect
 
@@ -69,6 +85,9 @@ Managed Delta tables:
 
 # Reset with schema drop
 ./.venv/bin/python orchestration/local/run_pipeline.py reset --drop-schemas
+
+# Purge backfill checkpoints explicitly
+./.venv/bin/python orchestration/local/run_pipeline.py reset --purge-checkpoints
 ```
 
 ## Makefile Shortcuts
@@ -80,7 +99,16 @@ make download YEAR=2024 MONTH=1
 make run YEAR=2024 MONTH=1
 make inspect
 make reset
+make demo YEAR=2024 MONTH=1
 ```
+
+## Backfill Resume Behavior
+
+- Checkpoints are created under `.local/checkpoints/backfill_<run_id>.json`.
+- `run-backfill` resumes automatically from the first incomplete month when a matching incomplete checkpoint is found.
+- Use `--no-resume` to force a new backfill run and checkpoint.
+- `reset` does not remove checkpoint files by default.
+- Use `reset --purge-checkpoints` only when you intentionally want to remove checkpoint state.
 
 ## Troubleshooting
 
@@ -97,3 +125,9 @@ make reset
   - run `make doctor` first to confirm local metastore/warehouse paths.
 - Quality table type conflict after schema drift:
   - rerun with `run-quality --reset`; quality tables auto-drop/recreate on compatible drift errors.
+- Backfill range errors:
+  - `--from` / `--to` must be in `YYYY-MM` format.
+  - start month must be earlier than or equal to end month.
+- Checkpoint resume confusion:
+  - run with `--no-resume` to create a fresh checkpoint.
+  - run `reset --purge-checkpoints` only when you want to discard all local backfill progress files.

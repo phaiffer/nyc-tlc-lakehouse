@@ -48,6 +48,16 @@ make inspect
 make check
 ```
 
+One-command local walkthrough:
+
+```bash
+make demo YEAR=2024 MONTH=1
+```
+
+`make demo` runs setup/download/reset/run/inspect and generates a text KPI report at:
+
+- `.local/demo/demo_<run_id>.txt`
+
 ## Developer Workflow
 
 ```bash
