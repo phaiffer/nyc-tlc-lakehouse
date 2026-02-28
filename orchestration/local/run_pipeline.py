@@ -18,6 +18,20 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from orchestration.local.backfill_utils import (  # noqa: E402
+    checkpoint_path,
+    find_resume_checkpoint,
+    initialize_checkpoint_payload,
+    iter_month_range,
+    load_checkpoint,
+    month_token,
+    next_incomplete_month,
+    parse_month_token,
+    purge_backfill_checkpoints,
+    resolve_backfill_range,
+    utc_now_iso,
+    write_checkpoint,
+)
 from pipelines.common.local_delta_writer import (  # noqa: E402
     is_schema_conflict_error,
     write_delta_table_safe,
@@ -67,6 +81,7 @@ DEFAULT_WAREHOUSE_DIR = REPO_ROOT / ".local" / "spark-warehouse"
 DEFAULT_METASTORE_DIR = REPO_ROOT / ".local" / "metastore_db"
 DEFAULT_SPARK_LOCAL_DIR = REPO_ROOT / ".local" / "spark-local"
 DEFAULT_DOWNLOAD_DIR = REPO_ROOT / "data" / "raw"
+DEFAULT_CHECKPOINT_DIR = REPO_ROOT / ".local" / "checkpoints"
 LOCAL_METASTORE_WARN_NOTE = (
     "Local note: WARN messages about Hive SerDe compatibility for Delta tables are expected when "
     "using Spark + Delta + embedded Hive metastore."
@@ -637,6 +652,204 @@ def _run_quality(
     print("Drift summary (gold):", gold_drift_summary)
 
 
+def _run_all_month(
+    spark: SparkSession,
+    *,
+    year: int | None,
+    month: int | None,
+    max_invalid_ratio: float,
+    strict_quality: bool,
+    input_parquet: Path | None = None,
+) -> None:
+    if input_parquet is None:
+        if year is None or month is None:
+            raise ValueError("Both --year and --month are required when --input-parquet is not set")
+        resolved_input = _resolve_input_parquet(input_parquet=None, year=year, month=month)
+    else:
+        resolved_input = input_parquet
+    _run_bronze(
+        spark,
+        input_parquet=resolved_input,
+        year=year,
+        month=month,
+        reset=False,
+    )
+    _run_silver(
+        spark,
+        max_invalid_ratio=max_invalid_ratio,
+        year=year,
+        month=month,
+        reset=False,
+    )
+    _run_gold(
+        spark,
+        max_invalid_ratio=max_invalid_ratio,
+        year=year,
+        month=month,
+        reset=False,
+    )
+    _run_quality(
+        spark,
+        max_invalid_ratio=max_invalid_ratio,
+        strict_quality=strict_quality,
+        year=year,
+        month=month,
+        reset=False,
+    )
+
+
+def _run_backfill(
+    spark: SparkSession,
+    *,
+    from_year: int | None,
+    from_month: int | None,
+    to_year: int | None,
+    to_month: int | None,
+    from_token: str | None,
+    to_token: str | None,
+    input_parquet: str | None,
+    max_invalid_ratio: float,
+    strict_quality: bool,
+    no_resume: bool,
+    reset: bool,
+    warehouse_dir: str | None,
+) -> None:
+    start, end = resolve_backfill_range(
+        from_year=from_year,
+        from_month=from_month,
+        to_year=to_year,
+        to_month=to_month,
+        from_token=from_token,
+        to_token=to_token,
+    )
+    months = iter_month_range(start=start, end=end)
+    months_planned = [month_token(year, month) for year, month in months]
+
+    if input_parquet and len(months_planned) > 1:
+        raise ValueError(
+            "--input-parquet is only supported for single-month backfill ranges. "
+            "Use default month discovery/download for multi-month backfill."
+        )
+
+    settings_snapshot = {
+        "range_from": month_token(*start),
+        "range_to": month_token(*end),
+        "max_invalid_ratio": float(max_invalid_ratio),
+        "strict_quality": bool(strict_quality),
+        "warehouse_dir": str(_resolve_relative_path(warehouse_dir).resolve())
+        if warehouse_dir
+        else str(DEFAULT_WAREHOUSE_DIR.resolve()),
+        "input_parquet": str(_resolve_relative_path(input_parquet).resolve())
+        if input_parquet
+        else None,
+    }
+
+    checkpoint_file: Path
+    checkpoint: dict
+    if no_resume:
+        run_id = str(uuid.uuid4())
+        checkpoint_file = checkpoint_path(repo_root=REPO_ROOT, run_id=run_id)
+        checkpoint = initialize_checkpoint_payload(
+            run_id=run_id,
+            settings_snapshot=settings_snapshot,
+            months_planned=months_planned,
+        )
+        write_checkpoint(checkpoint_file=checkpoint_file, payload=checkpoint)
+        print("Backfill resume disabled; created checkpoint:", checkpoint_file)
+    else:
+        matched = find_resume_checkpoint(repo_root=REPO_ROOT, settings_snapshot=settings_snapshot)
+        if matched is None:
+            run_id = str(uuid.uuid4())
+            checkpoint_file = checkpoint_path(repo_root=REPO_ROOT, run_id=run_id)
+            checkpoint = initialize_checkpoint_payload(
+                run_id=run_id,
+                settings_snapshot=settings_snapshot,
+                months_planned=months_planned,
+            )
+            write_checkpoint(checkpoint_file=checkpoint_file, payload=checkpoint)
+            print("Created new backfill checkpoint:", checkpoint_file)
+        else:
+            checkpoint_file, checkpoint = matched
+            checkpoint = load_checkpoint(checkpoint_file=checkpoint_file)
+            print("Resuming backfill from checkpoint:", checkpoint_file)
+
+    checkpoint.setdefault("months_planned", months_planned)
+    checkpoint.setdefault("months_completed", [])
+    checkpoint.setdefault("current_month", None)
+
+    pending_month = next_incomplete_month(
+        months_planned=checkpoint["months_planned"],
+        months_completed=checkpoint["months_completed"],
+    )
+    if pending_month is None:
+        checkpoint["finished_at"] = checkpoint.get("finished_at") or utc_now_iso()
+        checkpoint["current_month"] = None
+        write_checkpoint(checkpoint_file=checkpoint_file, payload=checkpoint)
+        print(
+            "Backfill already complete for range:",
+            settings_snapshot["range_from"],
+            "->",
+            settings_snapshot["range_to"],
+        )
+        print("Checkpoint:", checkpoint_file)
+        return
+
+    if reset:
+        _drop_tables(spark, ALL_TABLES)
+        print("Backfill reset applied before first pending month")
+
+    resolved_single_input: Path | None = None
+    if input_parquet:
+        resolved_single_input = _resolve_input_parquet(
+            input_parquet=input_parquet,
+            year=start[0],
+            month=start[1],
+        )
+
+    completed: list[str] = list(checkpoint["months_completed"])
+    completed_set = set(completed)
+
+    try:
+        for month_value in checkpoint["months_planned"]:
+            if month_value in completed_set:
+                continue
+
+            checkpoint["current_month"] = month_value
+            write_checkpoint(checkpoint_file=checkpoint_file, payload=checkpoint)
+
+            run_year, run_month = parse_month_token(month_value, flag_name="checkpoint month")
+            print(f"Backfill processing month: {month_value}")
+            _run_all_month(
+                spark,
+                year=run_year,
+                month=run_month,
+                max_invalid_ratio=max_invalid_ratio,
+                strict_quality=strict_quality,
+                input_parquet=resolved_single_input,
+            )
+
+            completed.append(month_value)
+            completed_set.add(month_value)
+            checkpoint["months_completed"] = completed
+            checkpoint["current_month"] = None
+            write_checkpoint(checkpoint_file=checkpoint_file, payload=checkpoint)
+    except Exception:
+        checkpoint["finished_at"] = None
+        write_checkpoint(checkpoint_file=checkpoint_file, payload=checkpoint)
+        raise
+
+    checkpoint["finished_at"] = utc_now_iso()
+    checkpoint["current_month"] = None
+    checkpoint["months_completed"] = completed
+    write_checkpoint(checkpoint_file=checkpoint_file, payload=checkpoint)
+    print(
+        "Backfill completed:",
+        f"run_id={checkpoint['run_id']}",
+        f"months_completed={len(completed)}",
+        f"checkpoint={checkpoint_file}",
+    )
+
+
 def _first_column_value(row) -> str:
     data = row.asDict(recursive=True)
     if data:
@@ -778,12 +991,79 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Fail pipeline when any severity=error quality-gate threshold is exceeded",
     )
 
+    backfill_parser = subparsers.add_parser(
+        "run-backfill",
+        help="Run month-range backfill with local checkpoint/resume",
+    )
+    _add_common_options(backfill_parser)
+    backfill_parser.add_argument(
+        "--from-year",
+        type=int,
+        default=None,
+        help="Backfill start year",
+    )
+    backfill_parser.add_argument(
+        "--from-month",
+        type=int,
+        default=None,
+        help="Backfill start month (1-12)",
+    )
+    backfill_parser.add_argument(
+        "--to-year",
+        type=int,
+        default=None,
+        help="Backfill end year",
+    )
+    backfill_parser.add_argument(
+        "--to-month",
+        type=int,
+        default=None,
+        help="Backfill end month (1-12)",
+    )
+    backfill_parser.add_argument(
+        "--from",
+        dest="from_token",
+        type=str,
+        default=None,
+        help="Backfill start month in YYYY-MM format",
+    )
+    backfill_parser.add_argument(
+        "--to",
+        dest="to_token",
+        type=str,
+        default=None,
+        help="Backfill end month in YYYY-MM format",
+    )
+    backfill_parser.add_argument(
+        "--input-parquet",
+        type=str,
+        required=False,
+        help="Optional explicit parquet path (single-month ranges only)",
+    )
+    backfill_parser.add_argument(
+        "--strict-quality",
+        "--strict",
+        dest="strict_quality",
+        action="store_true",
+        help="Fail pipeline when any severity=error quality-gate threshold is exceeded",
+    )
+    backfill_parser.add_argument(
+        "--no-resume",
+        action="store_true",
+        help="Disable resume and create a new checkpoint run",
+    )
+
     reset_parser = subparsers.add_parser("reset", help="Drop bronze/silver/gold/quality tables")
     _add_common_options(reset_parser)
     reset_parser.add_argument(
         "--drop-schemas",
         action="store_true",
         help="Drop bronze/silver/gold/quality schemas with CASCADE",
+    )
+    reset_parser.add_argument(
+        "--purge-checkpoints",
+        action="store_true",
+        help="Delete local backfill checkpoint files under .local/checkpoints",
     )
 
     clean_parser = subparsers.add_parser(
@@ -836,6 +1116,10 @@ def main() -> None:
             else:
                 _drop_tables(spark, ALL_TABLES)
                 print("Dropped tables:", ", ".join(ALL_TABLES))
+            if getattr(args, "purge_checkpoints", False):
+                DEFAULT_CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+                purged_count = purge_backfill_checkpoints(repo_root=REPO_ROOT)
+                print("Purged backfill checkpoints:", purged_count)
             return
 
         if args.command == "clean":
@@ -894,35 +1178,31 @@ def main() -> None:
                 raise ValueError("Resolved parquet path is required for run-all")
             if args.reset:
                 _drop_tables(spark, ALL_TABLES)
-
-            _run_bronze(
+            _run_all_month(
                 spark,
-                input_parquet=resolved_input_parquet,
                 year=args.year,
                 month=args.month,
-                reset=False,
-            )
-            _run_silver(
-                spark,
-                max_invalid_ratio=args.max_invalid_ratio,
-                year=args.year,
-                month=args.month,
-                reset=False,
-            )
-            _run_gold(
-                spark,
-                max_invalid_ratio=args.max_invalid_ratio,
-                year=args.year,
-                month=args.month,
-                reset=False,
-            )
-            _run_quality(
-                spark,
                 max_invalid_ratio=args.max_invalid_ratio,
                 strict_quality=args.strict_quality,
-                year=args.year,
-                month=args.month,
-                reset=False,
+                input_parquet=resolved_input_parquet,
+            )
+            return
+
+        if args.command == "run-backfill":
+            _run_backfill(
+                spark,
+                from_year=args.from_year,
+                from_month=args.from_month,
+                to_year=args.to_year,
+                to_month=args.to_month,
+                from_token=args.from_token,
+                to_token=args.to_token,
+                input_parquet=args.input_parquet,
+                max_invalid_ratio=args.max_invalid_ratio,
+                strict_quality=args.strict_quality,
+                no_resume=args.no_resume,
+                reset=args.reset,
+                warehouse_dir=getattr(args, "warehouse_dir", None),
             )
             return
 
