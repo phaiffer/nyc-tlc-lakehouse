@@ -69,10 +69,9 @@ Skeleton-only signals:
 
 ## Gaps, Risks, and Confusing Optics
 
-- Hardening report and empty-directory policy documents were stale and not aligned with current repository state.
-- `spark-warehouse/` existed locally but was not explicitly ignored in `.gitignore`, which could create accidental tracking noise.
-- `config/.gitkeep` remained from a prior skeleton phase and can read as unfinished scaffolding.
 - dbt execution remains intentionally out of CI because adapter/runtime provisioning is environment-specific.
+- Two backlog documents remain by design (`REQUIREMENTS_BACKLOG`, `IMPROVEMENTS_BACKLOG`) and require ongoing scope discipline to avoid overlap.
+- Local Spark/Hive runtime artifacts can accumulate quickly; cleanup guidance must stay explicit in root README.
 
 ## Prioritized Backlog
 
@@ -119,21 +118,22 @@ make reset && make run YEAR=2024 MONTH=1 && make inspect
 
 Implemented in this pass:
 
-- Refreshed this report with accurate inventory, current-state summary, and prioritized backlog.
-- Refreshed empty-directory policy to match actual current directory state.
-- Added explicit ignore rule for root `spark-warehouse/` local artifact output.
-- Removed obsolete `config/.gitkeep` placeholder marker.
-- Updated root `README.md` artifact-location and cleanup guidance to include root `spark-warehouse`.
+- Added Mermaid architecture visibility in root `README.md` for Medallion + contracts + quality + drift + optional dbt.
+- Added troubleshooting link coverage in docs index and clarified backlog-doc scopes.
+- Added optional dbt Make targets (`dbt-parse`, `dbt-run`, `dbt-test`, `dbt-docs`) that no-op when dbt CLI is absent.
+- Added Phase 1 findings list with concrete path/action decisions for empty dirs and roadmap optics.
+- Re-ran full validation and captured fresh evidence below.
 
 ## Validation Results
 
-Execution date: 2026-02-28
+Execution date: 2026-02-28 (latest refresh)
 
 `make check`:
 
 - `ruff format --check`: passed (`30 files already formatted`)
 - `ruff check`: passed (`All checks passed!`)
 - `pytest -q`: passed (`13 passed`)
+- Optional dbt target probe: `make dbt-parse` passed with expected no-op (`dbt CLI not found; skipping optional target`)
 
 `make reset && make run YEAR=2024 MONTH=1 && make inspect`:
 
