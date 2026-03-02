@@ -54,8 +54,10 @@ One-command local walkthrough:
 make demo YEAR=2024 MONTH=1
 ```
 
-`make demo` runs setup/download/reset/run/inspect and generates a text KPI report at:
+`make demo` runs setup/download/reset/run/inspect and writes runtime artifacts at:
 
+- `.local/logs/pipeline_<run_id>.jsonl`
+- `.local/checkpoints/backfill_<run_id>.json`
 - `.local/demo/demo_<run_id>.txt`
 
 ## Developer Workflow
