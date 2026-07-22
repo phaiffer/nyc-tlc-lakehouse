@@ -89,10 +89,12 @@ def _build_dim_payment_type(spark: SparkSession) -> DataFrame:
         (5, "Unknown"),
         (6, "Voided trip"),
     ]
+    # coalesce(1): see quality/observability/metrics_writer.py -- avoids
+    # spawning one idle Python worker per core for a 7-row local list.
     return spark.createDataFrame(
         rows,
         schema=["payment_type_id", "payment_type_name"],
-    )
+    ).coalesce(1)
 
 
 def _build_dim_rate_code(spark: SparkSession) -> DataFrame:
@@ -105,10 +107,12 @@ def _build_dim_rate_code(spark: SparkSession) -> DataFrame:
         (6, "Group ride"),
         (99, "Unknown"),
     ]
+    # coalesce(1): see quality/observability/metrics_writer.py -- avoids
+    # spawning one idle Python worker per core for a 7-row local list.
     return spark.createDataFrame(
         rows,
         schema=["rate_code_id", "rate_code_name"],
-    )
+    ).coalesce(1)
 
 
 def _write_dimension_table(

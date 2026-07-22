@@ -350,9 +350,15 @@ def run_quality_gate(
             StructField("details_json", StringType(), nullable=False),
         ]
     )
-    summary_df = spark.createDataFrame(summary_rows, schema=summary_schema).withColumn(
-        "run_ts",
-        F.lit(run_ts).cast("timestamp"),
+    # coalesce(1): see quality/observability/metrics_writer.py -- avoids
+    # spawning one idle Python worker per core for a small local list.
+    summary_df = (
+        spark.createDataFrame(summary_rows, schema=summary_schema)
+        .coalesce(1)
+        .withColumn(
+            "run_ts",
+            F.lit(run_ts).cast("timestamp"),
+        )
     )
 
     ordered_columns = [

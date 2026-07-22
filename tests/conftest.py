@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
-import pytest
-from delta import configure_spark_with_delta_pip
-from pyspark.sql import SparkSession
+# See orchestration/local/run_pipeline.py for why this is needed: on Windows,
+# "python"/"python3" on PATH can resolve to the Microsoft Store stub, which
+# silently kills any Spark Python worker with no Python traceback. Pin
+# workers to this interpreter so tests don't depend on global PATH state.
+os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
+os.environ.setdefault("PYSPARK_DRIVER_PYTHON", sys.executable)
+
+import pytest  # noqa: E402
+from delta import configure_spark_with_delta_pip  # noqa: E402
+from pyspark.sql import SparkSession  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:

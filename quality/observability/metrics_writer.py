@@ -33,10 +33,24 @@ def write_pipeline_metrics(
             StructField("metrics_json", StringType(), nullable=False),
         ]
     )
-    metrics_df = spark.createDataFrame(
-        [(run_id, pipeline_name, dataset, int(contract_version), metrics_json)],
-        schema=metrics_schema,
-    ).withColumn("run_ts", F.current_timestamp().cast("timestamp"))
+    # coalesce(1): spark.createDataFrame() on local Python data defaults to
+    # sc.defaultParallelism partitions (= local[*] core count), so a 1-row
+    # DataFrame would otherwise spawn one Python worker per core just to
+    # produce mostly-empty partitions. On Windows, launching many worker
+    # processes at once is unreliable (antivirus/process-creation overhead)
+    # and shows up as "Python worker exited unexpectedly (crashed)" /
+    # EOFException on a random task, with no Python traceback -- this was
+    # in fact the very first operation in the whole pipeline that needs a
+    # Python worker at all (everything upstream is builtin Spark SQL).
+    # Forcing a single partition means exactly one worker gets spawned.
+    metrics_df = (
+        spark.createDataFrame(
+            [(run_id, pipeline_name, dataset, int(contract_version), metrics_json)],
+            schema=metrics_schema,
+        )
+        .coalesce(1)
+        .withColumn("run_ts", F.current_timestamp().cast("timestamp"))
+    )
 
     ordered_columns = [
         "run_ts",

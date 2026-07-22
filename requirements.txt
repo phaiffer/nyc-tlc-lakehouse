@@ -1,4 +1,4 @@
-pyspark==3.5.1
+pyspark==3.5.9
 delta-spark==3.2.0
 
 jupyterlab==4.2.5

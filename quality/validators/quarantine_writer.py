@@ -23,7 +23,7 @@ def write_quarantine(
     """
     Append quarantined records into a Delta table with audit metadata columns.
     """
-    if quarantine_df.rdd.isEmpty():
+    if quarantine_df.isEmpty():
         return {"quarantined_rows": 0, "table": quarantine_table}
 
     enriched = quarantine_df

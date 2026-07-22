@@ -57,6 +57,49 @@ def table_schema_differs(
     return table_signature != expected_signature
 
 
+def _write_via_sql(
+    spark: SparkSession,
+    *,
+    table_name: str,
+    source_df: DataFrame,
+    mode: str,
+    table_exists: bool,
+) -> None:
+    """
+    Issue the actual write as Spark SQL DDL/DML rather than DataFrameWriter.saveAsTable().
+
+    DataFrameWriter.saveAsTable(mode="overwrite") against a Delta table registered under a V2
+    catalog (spark_catalog = DeltaCatalog) plans as AtomicReplaceTableAsSelectExec, which runs
+    Spark's TableCapabilityCheck for TRUNCATE. Delta's V2 table doesn't declare that capability
+    directly (it relies on V1_BATCH_WRITE), so this raises "Table ... does not support truncate
+    in batch mode." This is a confirmed regression in Spark 3.5.6+ (still present in 3.5.9) --
+    see https://github.com/delta-io/delta/issues/4671. Critically, "CREATE OR REPLACE TABLE ...
+    AS SELECT" hits the *same* AtomicReplaceTableAsSelectExec path (the "OR REPLACE" is what
+    triggers it, independent of whether the table actually exists yet), so that doesn't dodge
+    the bug either -- confirmed by testing against this exact repo. The two constructs that are
+    NOT affected, because they never go through the Replace/TableCapabilityCheck-for-TRUNCATE
+    exec path at all, are a plain "CREATE TABLE ... AS SELECT" (no OR REPLACE) for a table that
+    doesn't exist yet, and "INSERT OVERWRITE TABLE" / "INSERT INTO" DML for one that does.
+    """
+    view_name = f"__write_safe_source_{abs(hash(table_name))}"
+    source_df.createOrReplaceTempView(view_name)
+    try:
+        quoted_table = _quote_table_name(table_name)
+        if table_exists:
+            if mode == "append":
+                spark.sql(f"INSERT INTO {quoted_table} SELECT * FROM {view_name}")
+            else:
+                spark.sql(f"INSERT OVERWRITE TABLE {quoted_table} SELECT * FROM {view_name}")
+        else:
+            # Plain CREATE (no OR REPLACE): the table doesn't exist, so this is a pure CTAS
+            # and never touches the buggy Replace/truncate-capability-check exec path.
+            spark.sql(
+                f"CREATE TABLE {quoted_table} USING DELTA AS SELECT * FROM {view_name}"
+            )
+    finally:
+        spark.catalog.dropTempView(view_name)
+
+
 def write_delta_table_safe(
     spark: SparkSession,
     *,
@@ -71,9 +114,11 @@ def write_delta_table_safe(
     """
     Write managed Delta tables with explicit schema controls for local metastore stability.
 
-    The writer always disables implicit schema evolution (`mergeSchema=false`) and supports
-    controlled recreate paths (`force_recreate` / `recreate_on_schema_*`) to avoid Hive
-    metastore drift on reruns.
+    The writer always disables implicit schema evolution and supports controlled recreate
+    paths (`force_recreate` / `recreate_on_schema_*`) to avoid Hive metastore drift on
+    reruns. Note: `overwrite_schema` is accepted for backwards compatibility with callers,
+    but every overwrite already fully replaces the schema (see `_write_via_sql`), since that
+    is the only way to avoid the Spark 3.5.6+ saveAsTable regression described there.
     """
     if mode not in {"overwrite", "append"}:
         raise ValueError(f"Unsupported write mode: {mode}")
@@ -102,22 +147,24 @@ def write_delta_table_safe(
     if effective_mode == "append" and not table_exists:
         effective_mode = "overwrite"
 
-    writer = source_df.write.format("delta").mode(effective_mode).option("mergeSchema", "false")
-    if overwrite_schema and effective_mode == "overwrite":
-        writer = writer.option("overwriteSchema", "true")
-
     try:
-        writer.saveAsTable(table_name)
+        _write_via_sql(
+            spark,
+            table_name=table_name,
+            source_df=source_df,
+            mode=effective_mode,
+            table_exists=table_exists,
+        )
     except Exception as exc:
         if not recreate_on_schema_conflict or not is_schema_conflict_error(exc):
             raise
 
         print(f"Schema conflict detected for {table_name}; dropping and recreating table")
         drop_table_if_exists(spark, table_name)
-        (
-            source_df.write.format("delta")
-            .mode("overwrite")
-            .option("mergeSchema", "false")
-            .option("overwriteSchema", "true")
-            .saveAsTable(table_name)
+        _write_via_sql(
+            spark,
+            table_name=table_name,
+            source_df=source_df,
+            mode="overwrite",
+            table_exists=False,
         )

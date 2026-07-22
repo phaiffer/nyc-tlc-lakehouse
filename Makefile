@@ -1,7 +1,15 @@
 VENV_DIR ?= .venv
-VENV_PYTHON := $(VENV_DIR)/bin/python
-VENV_PIP := $(VENV_DIR)/bin/pip
-PYTHON ?= $(shell if [ -x "$(VENV_PYTHON)" ]; then echo "$(VENV_PYTHON)"; else echo python3; fi)
+VENV_PYTHON_UNIX := $(VENV_DIR)/bin/python
+VENV_PYTHON_WIN := $(VENV_DIR)/Scripts/python.exe
+VENV_PIP_UNIX := $(VENV_DIR)/bin/pip
+VENV_PIP_WIN := $(VENV_DIR)/Scripts/pip.exe
+# $(wildcard ...) is a native GNU Make function (no shell invoked), so this resolves the
+# same way whether make's SHELL is bash/sh (Linux/macOS/Git Bash) or cmd.exe (plain Windows
+# make, where a POSIX `[ -x ... ]` test in a $(shell ...) call fails silently and leaves
+# PYTHON empty -- which is what broke `make export-bi` etc. on Windows).
+VENV_PYTHON := $(if $(wildcard $(VENV_PYTHON_WIN)),$(VENV_PYTHON_WIN),$(VENV_PYTHON_UNIX))
+VENV_PIP := $(if $(wildcard $(VENV_PIP_WIN)),$(VENV_PIP_WIN),$(VENV_PIP_UNIX))
+PYTHON ?= $(if $(wildcard $(VENV_PYTHON)),$(VENV_PYTHON),python3)
 INPUT_PARQUET ?=
 YEAR ?= 2024
 MONTH ?= 1
@@ -13,6 +21,7 @@ STRICT_QUALITY ?= $(STRICT)
 SPARK_WAREHOUSE_PATH ?= $(if $(WAREHOUSE_DIR),$(WAREHOUSE_DIR),.local/spark-warehouse)
 SPARK_METASTORE_PATH ?= .local/metastore_db
 SPARK_LOCAL_PATH ?= .local/spark-local
+EXPORT_DIR ?= exports
 DBT_DIR := dbt/lakehouse_dbt
 DBT_PROFILES_DIR := $(DBT_DIR)/profiles
 DBT_TARGET := local
@@ -23,7 +32,7 @@ COMMON_ARGS = $(if $(YEAR),--year $(YEAR),) $(if $(MONTH),--month $(MONTH),) --m
 STRICT_QUALITY_ARG = $(if $(filter 1 true TRUE yes YES,$(STRICT_QUALITY)),--strict-quality,)
 INPUT_ARG = $(if $(INPUT_PARQUET),--input-parquet "$(INPUT_PARQUET)",)
 
-.PHONY: setup venv doctor verify lint fmt fmt-check test check docs-check compile contracts smoke run-local local-smoke download inspect bronze silver gold quality run-all run full-run clean reset demo dbt-parse dbt-run dbt-test dbt-docs
+.PHONY: setup venv doctor verify lint fmt fmt-check test check docs-check compile contracts smoke run-local local-smoke download inspect bronze silver gold quality run-all run full-run clean reset demo export-bi dbt-parse dbt-run dbt-test dbt-docs
 
 setup:
 	@echo "[setup] ensuring virtual environment at $(VENV_DIR)"
@@ -147,6 +156,10 @@ demo:
 	@$(MAKE) inspect WAREHOUSE_DIR="$(WAREHOUSE_DIR)"
 	@echo "[demo] generating KPI report"
 	$(PYTHON) scripts/demo_report.py --year $(YEAR) --month $(MONTH) $(if $(WAREHOUSE_DIR),--warehouse-dir "$(WAREHOUSE_DIR)",)
+
+export-bi:
+	@echo "[export-bi] exporting gold + quality tables to $(EXPORT_DIR)"
+	$(PYTHON) scripts/export_for_bi.py $(if $(WAREHOUSE_DIR),--warehouse-dir "$(WAREHOUSE_DIR)",) --output-dir "$(EXPORT_DIR)"
 
 dbt-parse:
 	@command -v dbt >/dev/null 2>&1 || { \

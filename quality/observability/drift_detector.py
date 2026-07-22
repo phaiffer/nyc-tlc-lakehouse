@@ -162,21 +162,27 @@ def _write_baseline_profile(
         ]
     )
 
-    baseline_df = spark.createDataFrame(
-        [
-            (
-                dataset,
-                run_id,
-                int(window_year) if window_year is not None else None,
-                int(window_month) if window_month is not None else None,
-                int(volume),
-                float(avg_fare_amount) if avg_fare_amount is not None else None,
-                float(avg_trip_distance) if avg_trip_distance is not None else None,
-                _to_json(passenger_distribution),
-            )
-        ],
-        schema=schema,
-    ).withColumn("run_ts", F.lit(run_ts).cast("timestamp"))
+    # coalesce(1): see metrics_writer.py -- avoids spawning one idle Python
+    # worker per core for what's a single-row DataFrame.
+    baseline_df = (
+        spark.createDataFrame(
+            [
+                (
+                    dataset,
+                    run_id,
+                    int(window_year) if window_year is not None else None,
+                    int(window_month) if window_month is not None else None,
+                    int(volume),
+                    float(avg_fare_amount) if avg_fare_amount is not None else None,
+                    float(avg_trip_distance) if avg_trip_distance is not None else None,
+                    _to_json(passenger_distribution),
+                )
+            ],
+            schema=schema,
+        )
+        .coalesce(1)
+        .withColumn("run_ts", F.lit(run_ts).cast("timestamp"))
+    )
 
     write_mode = "append" if spark.catalog.tableExists(baseline_table) else "overwrite"
     write_delta_table_safe(
@@ -225,7 +231,9 @@ def _write_drift_events(
             StructField("details_json", StringType(), nullable=False),
         ]
     )
-    events_df = spark.createDataFrame(events, schema=schema)
+    # coalesce(1): see metrics_writer.py -- avoids spawning one idle Python
+    # worker per core for what's typically a handful of rows.
+    events_df = spark.createDataFrame(events, schema=schema).coalesce(1)
     events_df = events_df.withColumn("run_ts", F.current_timestamp().cast("timestamp"))
 
     ordered = [

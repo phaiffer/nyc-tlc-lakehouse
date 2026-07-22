@@ -1,0 +1,30 @@
+﻿fix(pipeline): resolve Windows PySpark worker crash and Delta write regressions
+
+- Upgrade pyspark 3.5.1 -> 3.5.9 to fix SPARK-53759: Python worker exits
+  instantly with EOFException on Windows + Python 3.12+ in the
+  simple-worker path used by local mode (no fork() on Windows), with
+  zero Python-side traceback ever surfaced.
+
+- Rewrite pipelines/common/local_delta_writer.py to issue writes via SQL
+  (CREATE TABLE / INSERT OVERWRITE / INSERT INTO) instead of
+  DataFrameWriter.saveAsTable(). Works around a Spark 3.5.6+ regression
+  (delta-io/delta#4671): both saveAsTable(mode="overwrite") and
+  CREATE OR REPLACE TABLE route through AtomicReplaceTableAsSelectExec's
+  TableCapabilityCheck, which Delta's V2 table fails ("does not support
+  truncate in batch mode"). Plain CREATE TABLE / INSERT OVERWRITE avoid
+  that exec path entirely.
+
+- scripts/export_for_bi.py: add missing Delta session wiring
+  (spark.sql.extensions, spark.sql.catalog.spark_catalog,
+  configure_spark_with_delta_pip) so it can actually read Delta tables,
+  and fix the metastore connection config key (needed the
+  spark.hadoop. prefix; Spark was silently ignoring it otherwise).
+
+- Makefile: replace shell-based [ -x ... ] PYTHON venv detection with
+  GNU Make's $(wildcard ...), which works under both POSIX shells and
+  Windows cmd.exe, and recognizes both .venv/bin/python and
+  .venv/Scripts/python.exe.
+
+- Add scripts/diagnose_pyspark_worker.py, diagnose_raw_socket_ipc.py,
+  diagnose_worker_direct.py: isolated repro scripts used to bisect the
+  worker crash root cause down to SPARK-53759.
