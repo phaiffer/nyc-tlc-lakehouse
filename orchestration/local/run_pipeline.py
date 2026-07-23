@@ -12,17 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
-# On Windows, "python"/"python3" on PATH can resolve to the Microsoft Store
-# app-execution-alias stub instead of a real interpreter. When that happens,
-# any Spark operation that has to launch a Python worker process (e.g.
-# spark.createDataFrame(...) or the old RDD.isEmpty() path) gets a worker
-# that dies instantly with no Python traceback -- just an EOFException /
-# "Python worker exited unexpectedly (crashed)" on the JVM side. Pin
-# PYSPARK_PYTHON/PYSPARK_DRIVER_PYTHON to the interpreter actually running
-# this script (the venv's python.exe) so workers always match the driver,
-# regardless of what's on the global PATH. Must be set before any
-# SparkSession is created (env vars are inherited when the JVM subprocess
-# is spawned). setdefault() so an explicit override still wins.
+# Pin Spark's Python workers to the interpreter running this script, not whatever
+# "python"/"python3" resolves to on PATH. Must happen before the SparkSession is created.
 os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
 os.environ.setdefault("PYSPARK_DRIVER_PYTHON", sys.executable)
 
@@ -228,31 +219,15 @@ def _validate_metastore_access(spark: SparkSession) -> None:
 
 
 def _build_spark_session(*, paths: LocalSparkPaths) -> SparkSession:
-    # Local mode runs driver + executors in a single JVM. Without an explicit
-    # spark.driver.memory, PySpark defaults to a 1g heap, which is not enough
-    # for the window-function dedup + MERGE + reconciliation full-table scans
-    # this pipeline runs over a ~3M row month of trip data. Both values are
-    # configurable in case the default is still too small (or can be raised)
-    # for your machine.
+    # Local mode runs driver + executors in a single JVM. The default 1g heap isn't enough
+    # for the window-function dedup + MERGE + reconciliation scans over a ~3M row month, so
+    # both values are raised here and configurable via env var if a machine needs more.
     driver_memory = os.environ.get("SPARK_DRIVER_MEMORY", "4g")
     driver_max_result_size = os.environ.get("SPARK_DRIVER_MAX_RESULT_SIZE", "2g")
     shuffle_partitions = os.environ.get("SPARK_SHUFFLE_PARTITIONS", "16")
 
-    # Every Python-worker crash we've hit (isEmpty(), the metrics
-    # createDataFrame with 8-16 partitions, and now the same createDataFrame
-    # coalesced to a single partition) fails the exact same way: JVM-side
-    # EOFException, zero Python traceback, on the first operation in the run
-    # that needs a worker at all. Native-only stages (Bronze reads, Silver's
-    # window-function dedup, the Delta MERGE) never touch a worker and never
-    # fail. With coalesce(1) forcing exactly one worker spawn and it STILL
-    # failing every time, this isn't a concurrency/spawn-race problem -- a
-    # single isolated worker can't complete its handshake. That points at
-    # the worker's callback socket to the JVM, not the worker process
-    # itself: a well-documented Windows issue where "localhost" resolves to
-    # different addresses (IPv4 127.0.0.1 vs IPv6 ::1) on each side of that
-    # connection, so the worker's connect-back silently fails and the JVM
-    # sees it as a dead socket (EOFException) instead of a Python error.
-    # Pin everything to IPv4 loopback explicitly to remove that ambiguity.
+    # Pin loopback traffic to IPv4 for stability on Windows, where "localhost" can resolve
+    # differently (IPv4 vs IPv6) on each side of the driver/worker socket.
     os.environ.setdefault("SPARK_LOCAL_IP", "127.0.0.1")
     driver_host = os.environ.get("SPARK_DRIVER_HOST", "127.0.0.1")
     driver_bind_address = os.environ.get("SPARK_DRIVER_BIND_ADDRESS", "127.0.0.1")

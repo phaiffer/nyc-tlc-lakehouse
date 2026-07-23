@@ -4,10 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-# See orchestration/local/run_pipeline.py for why this is needed: on Windows,
-# "python"/"python3" on PATH can resolve to the Microsoft Store stub, which
-# silently kills any Spark Python worker with no Python traceback. Pin
-# workers to this interpreter so tests don't depend on global PATH state.
+# Pin Spark's Python workers to this interpreter so tests don't depend on global PATH state.
 os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
 os.environ.setdefault("PYSPARK_DRIVER_PYTHON", sys.executable)
 

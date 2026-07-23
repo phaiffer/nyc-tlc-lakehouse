@@ -66,20 +66,14 @@ def _write_via_sql(
     table_exists: bool,
 ) -> None:
     """
-    Issue the actual write as Spark SQL DDL/DML rather than DataFrameWriter.saveAsTable().
+    Issue the write as Spark SQL DDL/DML instead of DataFrameWriter.saveAsTable().
 
-    DataFrameWriter.saveAsTable(mode="overwrite") against a Delta table registered under a V2
-    catalog (spark_catalog = DeltaCatalog) plans as AtomicReplaceTableAsSelectExec, which runs
-    Spark's TableCapabilityCheck for TRUNCATE. Delta's V2 table doesn't declare that capability
-    directly (it relies on V1_BATCH_WRITE), so this raises "Table ... does not support truncate
-    in batch mode." This is a confirmed regression in Spark 3.5.6+ (still present in 3.5.9) --
-    see https://github.com/delta-io/delta/issues/4671. Critically, "CREATE OR REPLACE TABLE ...
-    AS SELECT" hits the *same* AtomicReplaceTableAsSelectExec path (the "OR REPLACE" is what
-    triggers it, independent of whether the table actually exists yet), so that doesn't dodge
-    the bug either -- confirmed by testing against this exact repo. The two constructs that are
-    NOT affected, because they never go through the Replace/TableCapabilityCheck-for-TRUNCATE
-    exec path at all, are a plain "CREATE TABLE ... AS SELECT" (no OR REPLACE) for a table that
-    doesn't exist yet, and "INSERT OVERWRITE TABLE" / "INSERT INTO" DML for one that does.
+    saveAsTable(mode="overwrite") against a Delta table under a V2 catalog plans as
+    AtomicReplaceTableAsSelectExec, which requires TRUNCATE capability that Delta's V2 table
+    doesn't declare -- it fails with "does not support truncate in batch mode". This is a
+    known Spark 3.5.6+ regression (delta-io/delta#4671), and "CREATE OR REPLACE TABLE ... AS
+    SELECT" hits the same code path, so it doesn't help either. Plain "CREATE TABLE ... AS
+    SELECT" for new tables and "INSERT OVERWRITE" / "INSERT INTO" for existing ones avoid it.
     """
     view_name = f"__write_safe_source_{abs(hash(table_name))}"
     source_df.createOrReplaceTempView(view_name)
@@ -114,11 +108,10 @@ def write_delta_table_safe(
     """
     Write managed Delta tables with explicit schema controls for local metastore stability.
 
-    The writer always disables implicit schema evolution and supports controlled recreate
-    paths (`force_recreate` / `recreate_on_schema_*`) to avoid Hive metastore drift on
-    reruns. Note: `overwrite_schema` is accepted for backwards compatibility with callers,
-    but every overwrite already fully replaces the schema (see `_write_via_sql`), since that
-    is the only way to avoid the Spark 3.5.6+ saveAsTable regression described there.
+    Disables implicit schema evolution and supports controlled recreate paths
+    (`force_recreate` / `recreate_on_schema_*`) to avoid Hive metastore drift on reruns.
+    `overwrite_schema` is kept for API compatibility; every overwrite already replaces the
+    schema fully (see `_write_via_sql`).
     """
     if mode not in {"overwrite", "append"}:
         raise ValueError(f"Unsupported write mode: {mode}")

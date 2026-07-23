@@ -3,10 +3,8 @@ VENV_PYTHON_UNIX := $(VENV_DIR)/bin/python
 VENV_PYTHON_WIN := $(VENV_DIR)/Scripts/python.exe
 VENV_PIP_UNIX := $(VENV_DIR)/bin/pip
 VENV_PIP_WIN := $(VENV_DIR)/Scripts/pip.exe
-# $(wildcard ...) is a native GNU Make function (no shell invoked), so this resolves the
-# same way whether make's SHELL is bash/sh (Linux/macOS/Git Bash) or cmd.exe (plain Windows
-# make, where a POSIX `[ -x ... ]` test in a $(shell ...) call fails silently and leaves
-# PYTHON empty -- which is what broke `make export-bi` etc. on Windows).
+# $(wildcard ...) is a native Make function, so it resolves the same way under bash/sh or
+# cmd.exe -- unlike a shell-based `[ -x ... ]` test, which silently breaks on plain Windows make.
 VENV_PYTHON := $(if $(wildcard $(VENV_PYTHON_WIN)),$(VENV_PYTHON_WIN),$(VENV_PYTHON_UNIX))
 VENV_PIP := $(if $(wildcard $(VENV_PIP_WIN)),$(VENV_PIP_WIN),$(VENV_PIP_UNIX))
 PYTHON ?= $(if $(wildcard $(VENV_PYTHON)),$(VENV_PYTHON),python3)

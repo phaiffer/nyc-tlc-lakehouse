@@ -12,10 +12,7 @@ import argparse
 import os
 import sys
 
-# See orchestration/local/run_pipeline.py for why this is needed: on Windows,
-# "python"/"python3" on PATH can resolve to the Microsoft Store stub, which
-# silently kills any Spark Python worker (e.g. spawned by toPandas()/collect
-# fallbacks) with no Python traceback. Pin workers to this interpreter.
+# Pin PySpark workers to this interpreter rather than whatever "python" resolves to on PATH.
 os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
 os.environ.setdefault("PYSPARK_DRIVER_PYTHON", sys.executable)
 
@@ -44,33 +41,24 @@ def build_spark(warehouse_dir: str) -> SparkSession:
     os.environ.setdefault("SPARK_LOCAL_IP", "127.0.0.1")
     builder = (
         SparkSession.builder.appName("export-for-bi")
-        # See orchestration/local/run_pipeline.py's _build_spark_session for
-        # why this is set explicitly (default 1g heap in local mode is too
-        # small once tables have real data and easily causes GC-thrashing
-        # crashes, including phantom "Python worker exited unexpectedly"
-        # errors during unrelated small operations; the IPv4 pin works
-        # around a Windows localhost IPv4/IPv6 mismatch that breaks the
-        # Python worker's callback socket to the JVM).
+        # Mirrors _build_spark_session in orchestration/local/run_pipeline.py: raise the
+        # default 1g driver heap and pin everything to IPv4 loopback for local-mode stability.
         .config("spark.driver.host", os.environ.get("SPARK_DRIVER_HOST", "127.0.0.1"))
         .config(
             "spark.driver.bindAddress", os.environ.get("SPARK_DRIVER_BIND_ADDRESS", "127.0.0.1")
         )
         .config("spark.driver.extraJavaOptions", "-Djava.net.preferIPv4Stack=true")
         .config("spark.driver.memory", os.environ.get("SPARK_DRIVER_MEMORY", "4g"))
-        # This session reads Delta tables written by run_pipeline.py, so it needs the same
-        # Delta wiring as _build_spark_session there: the SQL extension + catalog configs,
-        # plus configure_spark_with_delta_pip(...) below to actually put the delta-spark jar
-        # on the classpath. Without this, spark.table("gold.fct_trips_daily") etc. fail with
-        # "[DATA_SOURCE_NOT_FOUND] Failed to find the data source: delta".
+        # Same Delta catalog wiring as run_pipeline.py, since this session reads the tables
+        # that pipeline writes. configure_spark_with_delta_pip() below adds the delta-spark jar.
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
         .config(
             "spark.sql.catalog.spark_catalog",
             "org.apache.spark.sql.delta.catalog.DeltaCatalog",
         )
         .config("spark.sql.warehouse.dir", warehouse_dir)
-        # Must be prefixed with "spark.hadoop." -- Spark silently ignores (and warns on) any
-        # config key that doesn't start with "spark.", so the old bare "javax.jdo.option.
-        # ConnectionURL" key here never actually took effect.
+        # Note the "spark.hadoop." prefix -- Spark ignores config keys that don't start with
+        # "spark.", so a bare "javax.jdo.option.ConnectionURL" key here is a silent no-op.
         .config(
             "spark.hadoop.javax.jdo.option.ConnectionURL",
             f"jdbc:derby:;databaseName={metastore_dir};create=true",
