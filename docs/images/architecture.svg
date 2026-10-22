@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+  "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" width="1008pt" height="432pt" viewBox="0 0 1008 432" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <title>Arquitetura do fluxo local NYC TLC Lakehouse</title>
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:title>Arquitetura do fluxo local NYC TLC Lakehouse</dc:title>
+    <dc:description>Arquitetura do fluxo local NYC TLC Lakehouse</dc:description>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.9.2, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="figure_1">
+  <g id="patch_1">
+   <path d="M 0 432
+L 1008 432
+L 1008 0
+L 0 0
+z
+" style="fill: #f6f8fc"/>
+  </g>
+  <g id="axes_1">
+   <g id="patch_2">
+    <path d="M 49.392 206.496
+L 232.848 206.496
+Q 244.944 206.496 244.944 201.312
+L 244.944 105.408
+Q 244.944 100.224 232.848 100.224
+L 49.392 100.224
+Q 37.296 100.224 37.296 105.408
+L 37.296 201.312
+Q 37.296 206.496 49.392 206.496
+z
+" clip-path="url(#p096627ba76)" style="fill: #ffffff; stroke: #dbe3ee; stroke-width: 1.3; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_3">
+    <path d="M 286.272 206.496
+L 469.728 206.496
+Q 481.824 206.496 481.824 201.312
+L 481.824 105.408
+Q 481.824 100.224 469.728 100.224
+L 286.272 100.224
+Q 274.176 100.224 274.176 105.408
+L 274.176 201.312
+Q 274.176 206.496 286.272 206.496
+z
+" clip-path="url(#p096627ba76)" style="fill: #ffffff; stroke: #dbe3ee; stroke-width: 1.3; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_4">
+    <path d="M 523.152 206.496
+L 706.608 206.496
+Q 718.704 206.496 718.704 201.312
+L 718.704 105.408
+Q 718.704 100.224 706.608 100.224
+L 523.152 100.224
+Q 511.056 100.224 511.056 105.408
+L 511.056 201.312
+Q 511.056 206.496 523.152 206.496
+z
+" clip-path="url(#p096627ba76)" style="fill: #ffffff; stroke: #dbe3ee; stroke-width: 1.3; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_5">
+    <path d="M 760.032 206.496
+L 958.608 206.496
+Q 970.704 206.496 970.704 201.312
+L 970.704 105.408
+Q 970.704 100.224 958.608 100.224
+L 760.032 100.224
+Q 747.936 100.224 747.936 105.408
+L 747.936 201.312
+Q 747.936 206.496 760.032 206.496
+z
+" clip-path="url(#p096627ba76)" style="fill: #ffffff; stroke: #dbe3ee; stroke-width: 1.3; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_6">
+    <path d="M 238.881665 151.2
+Q 259.561823 151.2 279.123947 151.2
+" clip-path="url(#p096627ba76)" style="fill: none; stroke: #52647a; stroke-linecap: round"/>
+    <path d="M 273.523947 148.4
+L 279.123947 151.2
+L 273.523947 154
+z
+" clip-path="url(#p096627ba76)" style="fill: #52647a; stroke: #52647a; stroke-linecap: round"/>
+   </g>
+   <g id="patch_7">
+    <path d="M 475.761665 151.2
+Q 496.441823 151.2 516.003947 151.2
+" clip-path="url(#p096627ba76)" style="fill: none; stroke: #52647a; stroke-linecap: round"/>
+    <path d="M 510.403947 148.4
+L 516.003947 151.2
+L 510.403947 154
+z
+" clip-path="url(#p096627ba76)" style="fill: #52647a; stroke: #52647a; stroke-linecap: round"/>
+   </g>
+   <g id="patch_8">
+    <path d="M 712.641665 151.2
+Q 733.321823 151.2 752.883947 151.2
+" clip-path="url(#p096627ba76)" style="fill: none; stroke: #52647a; stroke-linecap: round"/>
+    <path d="M 747.283947 148.4
+L 752.883947 151.2
+L 747.283947 154
+z
+" clip-path="url(#p096627ba76)" style="fill: #52647a; stroke: #52647a; stroke-linecap: round"/>
+   </g>
+   <g id="patch_9">
+    <path d="M 49.392 379.296
+L 293.328 379.296
+Q 305.424 379.296 305.424 374.112
+L 305.424 278.208
+Q 305.424 273.024 293.328 273.024
+L 49.392 273.024
+Q 37.296 273.024 37.296 278.208
+L 37.296 374.112
+Q 37.296 379.296 49.392 379.296
+z
+" clip-path="url(#p096627ba76)" style="fill: #ffffff; stroke: #dbe3ee; stroke-width: 1.3; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_10">
+    <path d="M 361.872 379.296
+L 646.128 379.296
+Q 658.224 379.296 658.224 374.112
+L 658.224 278.208
+Q 658.224 273.024 646.128 273.024
+L 361.872 273.024
+Q 349.776 273.024 349.776 278.208
+L 349.776 374.112
+Q 349.776 379.296 361.872 379.296
+z
+" clip-path="url(#p096627ba76)" style="fill: #ffffff; stroke: #dbe3ee; stroke-width: 1.3; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_11">
+    <path d="M 714.672 379.296
+L 958.608 379.296
+Q 970.704 379.296 970.704 374.112
+L 970.704 278.208
+Q 970.704 273.024 958.608 273.024
+L 714.672 273.024
+Q 702.576 273.024 702.576 278.208
+L 702.576 374.112
+Q 702.576 379.296 714.672 379.296
+z
+" clip-path="url(#p096627ba76)" style="fill: #ffffff; stroke: #dbe3ee; stroke-width: 1.3; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_12">
+    <path d="M 613.400977 204.386968
+Q 574.560931 239.759152 536.547496 274.37853
+" clip-path="url(#p096627ba76)" style="fill: none; stroke: #52647a; stroke-linecap: round"/>
+    <path d="M 542.573137 272.678043
+L 536.547496 274.37853
+L 538.80249 268.537726
+z
+" clip-path="url(#p096627ba76)" style="fill: #52647a; stroke: #52647a; stroke-linecap: round"/>
+   </g>
+   <g id="patch_13">
+    <path d="M 854.881238 203.599182
+Q 730.800327 239.759905 607.792798 275.607813
+" clip-path="url(#p096627ba76)" style="fill: none; stroke: #52647a; stroke-linecap: round"/>
+    <path d="M 613.952552 276.729165
+L 607.792798 275.607813
+L 612.385731 271.352821
+z
+" clip-path="url(#p096627ba76)" style="fill: #52647a; stroke: #52647a; stroke-linecap: round"/>
+   </g>
+   <g id="patch_14">
+    <path d="M 552.437095 203.437255
+Q 372.957445 239.760517 194.573613 275.862007
+" clip-path="url(#p096627ba76)" style="fill: none; stroke: #52647a; stroke-linecap: round"/>
+    <path d="M 200.617743 277.495556
+L 194.573613 275.862007
+L 199.50693 272.006832
+z
+" clip-path="url(#p096627ba76)" style="fill: #52647a; stroke: #52647a; stroke-linecap: round"/>
+   </g>
+   <g id="patch_15">
+    <path d="M 299.357051 326.16
+Q 327.597276 326.16 354.719468 326.16
+" clip-path="url(#p096627ba76)" style="fill: none; stroke: #52647a; stroke-linecap: round"/>
+    <path d="M 349.119468 323.36
+L 354.719468 326.16
+L 349.119468 328.96
+z
+" clip-path="url(#p096627ba76)" style="fill: #52647a; stroke: #52647a; stroke-linecap: round"/>
+   </g>
+   <g id="patch_16">
+    <path d="M 651.152312 326.16
+Q 679.895859 326.16 707.521373 326.16
+" clip-path="url(#p096627ba76)" style="fill: none; stroke: #52647a; stroke-linecap: round"/>
+    <path d="M 701.921373 323.36
+L 707.521373 326.16
+L 701.921373 328.96
+z
+" clip-path="url(#p096627ba76)" style="fill: #52647a; stroke: #52647a; stroke-linecap: round"/>
+   </g>
+   <g id="patch_17">
+    <path d="M 927.36 205.043643
+Q 927.36 239.761172 927.36 273.360667
+" clip-path="url(#p096627ba76)" style="fill: none; stroke: #52647a; stroke-linecap: round"/>
+    <path d="M 930.16 267.760667
+L 927.36 273.360667
+L 924.56 267.760667
+z
+" clip-path="url(#p096627ba76)" style="fill: #52647a; stroke: #52647a; stroke-linecap: round"/>
+   </g>
+   <g id="text_1">
+    <text style="fill: #172b46; font: 700 23px 'DejaVu Sans'; text-anchor: start" x="45.36" y="43.497031" transform="rotate(-0 45.36 43.497031)">NYC TLC Lakehouse | arquitetura local</text>
+   </g>
+   <g id="text_2">
+    <text style="fill: #52647a; font: 11px 'DejaVu Sans'; text-anchor: start" x="45.36" y="58.478281" transform="rotate(-0 45.36 58.478281)">Spark + Delta Lake • catálogo Hive embarcado • contratos versionados</text>
+   </g>
+   <g id="text_3">
+    <text style="fill: #245fbd; font: 700 14px 'DejaVu Sans'; text-anchor: start" x="60.48" y="123.12" transform="rotate(-0 60.48 123.12)">Fonte pública</text>
+   </g>
+   <g id="text_4">
+    <text style="fill: #172b46; font: 10px 'DejaVu Sans'" transform="translate(60.48 154.478437)">NYC TLC • yellow</text>
+    <text style="fill: #172b46; font: 10px 'DejaVu Sans'" transform="translate(60.48 170.235313)">Parquet mensal</text>
+   </g>
+   <g id="text_5">
+    <text style="fill: #245fbd; font: 700 14px 'DejaVu Sans'; text-anchor: start" x="297.36" y="123.12" transform="rotate(-0 297.36 123.12)">Bronze</text>
+   </g>
+   <g id="text_6">
+    <text style="fill: #172b46; font: 10px 'DejaVu Sans'" transform="translate(297.36 154.200312)">events_raw</text>
+    <text style="fill: #172b46; font: 10px 'DejaVu Sans'" transform="translate(297.36 170.541875)">Normalização + janela</text>
+    <text style="fill: #172b46; font: 10px 'DejaVu Sans'" transform="translate(297.36 186.29875)">Sobrescrita mensal</text>
+   </g>
+   <g id="text_7">
+    <text style="fill: #245fbd; font: 700 14px 'DejaVu Sans'; text-anchor: start" x="534.24" y="123.12" transform="rotate(-0 534.24 123.12)">Silver</text>
+   </g>
+   <g id="text_8">
+    <text style="fill: #172b46; font: 10px 'DejaVu Sans'" transform="translate(534.24 154.478437)">trips_clean</text>
+    <text style="fill: #172b46; font: 10px 'DejaVu Sans'" transform="translate(534.24 170.82)">Limpeza + deduplicação</text>
+    <text style="fill: #172b46; font: 10px 'DejaVu Sans'" transform="translate(534.24 186.576875)">Contrato + merge Delta</text>
+   </g>
+   <g id="text_9">
+    <text style="fill: #245fbd; font: 700 14px 'DejaVu Sans'; text-anchor: start" x="771.12" y="123.12" transform="rotate(-0 771.12 123.12)">Gold</text>
+   </g>
+   <g id="text_10">
+    <text style="fill: #172b46; font: 10px 'DejaVu Sans'" transform="translate(771.12 154.64875)">fct_trips_daily + dimensões</text>
+    <text style="fill: #172b46; font: 10px 'DejaVu Sans'" transform="translate(771.12 170.68375)">Data × fornecedor</text>
+    <text style="fill: #172b46; font: 10px 'DejaVu Sans'" transform="translate(771.12 186.440625)">KPIs + merge Delta</text>
+   </g>
+   <g id="text_11">
+    <text style="fill: #087f8c; font: 700 14px 'DejaVu Sans'; text-anchor: start" x="60.48" y="295.92" transform="rotate(-0 60.48 295.92)">Rastreabilidade</text>
+   </g>
+   <g id="text_12">
+    <text style="fill: #172b46; font: 10px 'DejaVu Sans'" transform="translate(60.48 327.678437)">Métricas de limpeza por regra</text>
+    <text style="fill: #172b46; font: 10px 'DejaVu Sans'" transform="translate(60.48 343.435313)">Quarentena de contratos</text>
+    <text style="fill: #172b46; font: 10px 'DejaVu Sans'" transform="translate(60.48 359.192187)">Logs com run_id</text>
+   </g>
+   <g id="text_13">
+    <text style="fill: #087f8c; font: 700 14px 'DejaVu Sans'; text-anchor: start" x="372.96" y="295.92" transform="rotate(-0 372.96 295.92)">Qualidade + drift</text>
+   </g>
+   <g id="text_14">
+    <text style="fill: #172b46; font: 10px 'DejaVu Sans'" transform="translate(372.96 327.278437)">Gate sobre Silver / Gold do mês</text>
+    <text style="fill: #172b46; font: 10px 'DejaVu Sans'" transform="translate(372.96 343.035313)">Perfis mensais + base anterior</text>
+    <text style="fill: #172b46; font: 10px 'DejaVu Sans'" transform="translate(372.96 359.09875)">Violações e eventos persistidos</text>
+   </g>
+   <g id="text_15">
+    <text style="fill: #087f8c; font: 700 14px 'DejaVu Sans'; text-anchor: start" x="725.76" y="295.92" transform="rotate(-0 725.76 295.92)">Exportação BI</text>
+   </g>
+   <g id="text_16">
+    <text style="fill: #172b46; font: 10px 'DejaVu Sans'" transform="translate(725.76 327.278437)">Gold + tabelas de qualidade</text>
+    <text style="fill: #172b46; font: 10px 'DejaVu Sans'" transform="translate(725.76 343.035313)">Parquet por tabela</text>
+    <text style="fill: #172b46; font: 10px 'DejaVu Sans'" transform="translate(725.76 358.792188)">scripts/export_for_bi.py</text>
+   </g>
+   <g id="text_17">
+    <text style="fill: #52647a; font: 10px 'DejaVu Sans'; text-anchor: start" x="45.36" y="408.24" transform="rotate(-0 45.36 408.24)">Execução local; dbt é uma camada opcional fora deste fluxo.</text>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="p096627ba76">
+   <rect x="0" y="0" width="1008" height="432"/>
+  </clipPath>
+ </defs>
+</svg>

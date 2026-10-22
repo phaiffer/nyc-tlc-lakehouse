@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -10,10 +10,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from pyspark.sql import functions as F  # noqa: E402
+
 from orchestration.local.run_pipeline import (  # noqa: E402
-    BRONZE_TABLE,
     GOLD_TABLE,
+    METRICS_TABLE,
     SILVER_TABLE,
+    VIOLATIONS_TABLE,
     _build_spark_session,
     _resolve_spark_paths,
 )
@@ -35,20 +38,54 @@ def _window_bounds(*, year: int, month: int) -> tuple[str, str]:
     return start, end
 
 
-def _query_month_counts(*, year: int, month: int, warehouse_dir: str | None) -> dict[str, str]:
+def resolve_report_run(spark, *, year: int, month: int, run_id: str | None = None) -> dict:
+    """Resolve the latest matching stage run; never label a report with a new UUID."""
+    _require_month(year=year, month=month)
+    metrics = spark.table(METRICS_TABLE).filter(
+        (F.get_json_object("metrics_json", "$.window.year").cast("int") == year)
+        & (F.get_json_object("metrics_json", "$.window.month").cast("int") == month)
+    )
+    latest = {}
+    for dataset in (SILVER_TABLE, GOLD_TABLE):
+        rows = (
+            metrics.filter(F.col("dataset") == dataset)
+            .orderBy(F.col("run_ts").desc())
+            .limit(1)
+            .collect()
+        )
+        if not rows:
+            raise ValueError(f"No pipeline metrics for {dataset} in {year:04d}-{month:02d}")
+        latest[dataset] = rows[0]
+    effective_run_id = latest[GOLD_TABLE]["run_id"]
+    if latest[SILVER_TABLE]["run_id"] != effective_run_id:
+        raise ValueError("Latest Silver and Gold metrics belong to different runs")
+    if run_id is not None and run_id != effective_run_id:
+        raise ValueError("Requested run_id does not match the latest pipeline run for this month")
+    quality_rows = spark.table(VIOLATIONS_TABLE).filter(
+        (F.col("run_id") == effective_run_id)
+        & (F.col("window_year") == year)
+        & (F.col("window_month") == month)
+    )
+    if not quality_rows.limit(1).count():
+        raise ValueError("No quality results for the selected pipeline run and month")
+    return {
+        "run_id": effective_run_id,
+        "silver_metrics": json.loads(latest[SILVER_TABLE]["metrics_json"]),
+    }
+
+
+def _query_month_counts(
+    *, year: int, month: int, warehouse_dir: str | None, run_id: str | None = None
+) -> dict[str, str]:
     start, end = _window_bounds(year=year, month=month)
     paths = _resolve_spark_paths(warehouse_dir=warehouse_dir)
     spark = _build_spark_session(paths=paths)
 
     try:
-        bronze_count = spark.sql(
-            f"""
-            SELECT COUNT(*) AS cnt
-            FROM {BRONZE_TABLE}
-            WHERE tpep_pickup_datetime >= TIMESTAMP('{start} 00:00:00')
-              AND tpep_pickup_datetime < TIMESTAMP('{end} 00:00:00')
-            """
-        ).collect()[0]["cnt"]
+        selected_run = resolve_report_run(spark, year=year, month=month, run_id=run_id)
+        # Bronze is overwritten each month. Read its run snapshot, so an older
+        # month's report remains correct after a subsequent month was ingested.
+        bronze_count = selected_run["silver_metrics"]["row_accounting"]["input_count"]
 
         silver_count = spark.sql(
             f"""
@@ -95,6 +132,7 @@ def _query_month_counts(*, year: int, month: int, warehouse_dir: str | None) -> 
         spark.stop()
 
     return {
+        "run_id": selected_run["run_id"],
         "bronze_count": str(int(bronze_count)),
         "silver_count": str(int(silver_count)),
         "gold_count": str(int(gold_count)),
@@ -128,17 +166,18 @@ def main() -> None:
         "--run-id",
         type=str,
         default=None,
-        help="Optional explicit run_id for report file naming",
+        help="Validate against this pipeline run_id (defaults to latest matching month)",
     )
     args = parser.parse_args()
 
     _require_month(year=args.year, month=args.month)
-    run_id = args.run_id or str(uuid.uuid4())
     output_dir = Path(args.output_dir).expanduser()
     output_dir.mkdir(parents=True, exist_ok=True)
+    counts = _query_month_counts(
+        year=args.year, month=args.month, warehouse_dir=args.warehouse_dir, run_id=args.run_id
+    )
+    run_id = counts["run_id"]
     output_file = output_dir / f"demo_{run_id}.txt"
-
-    counts = _query_month_counts(year=args.year, month=args.month, warehouse_dir=args.warehouse_dir)
     lines = [
         "NYC TLC Lakehouse Demo Report",
         f"generated_at_utc={datetime.now(tz=timezone.utc).isoformat()}",

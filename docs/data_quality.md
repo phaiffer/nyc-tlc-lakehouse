@@ -34,6 +34,12 @@ Gate behavior:
 - `passed`, `failed_count`, `sample_values`
 - `threshold`, `details_json`
 
+This table retains outcomes across executions. Filter to a run/window or group
+by `dataset`, `run_id`, `window_year`, `window_month` and `severity`; a global
+count combines multiple rule evaluations. See [analytics examples](../analytics/examples.sql).
+The BI export preserves the complete history and the quality notebook reports
+only its current run/window. The optional dbt models do not consume this table.
+
 ## Quarantine Schema
 
 `quality.quarantine_records` includes:

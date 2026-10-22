@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 
 from quality.validators.quality_gate import run_quality_gate
 
@@ -93,4 +94,23 @@ def test_quality_gate_output_schema_is_stable_across_reruns(spark) -> None:
 
     assert first_signature == expected_signature
     assert second_signature == expected_signature
-    assert spark.table(output_table).count() == 6
+    assert spark.table(output_table).count() == 12
+    counts_by_run = {
+        row["run_id"]: row["count"]
+        for row in spark.table(output_table).groupBy("run_id").count().collect()
+    }
+    assert counts_by_run == {"schema-stability-1": 6, "schema-stability-2": 6}
+
+    # Execute the actual analytics example against two runs of the same month.
+    examples = Path(__file__).resolve().parents[2] / "analytics/examples.sql"
+    quality_query = examples.read_text().split("-- Quality gate outcomes by severity")[1]
+    quality_query = quality_query.split(";", 1)[0].replace(
+        "quality.violations_summary", output_table
+    )
+    outcomes = spark.sql(quality_query).collect()
+    assert len(outcomes) == 2
+    assert {row.run_id for row in outcomes} == set(counts_by_run)
+    for row in outcomes:
+        assert (row.window_year, row.window_month) == (2024, 1)
+        assert row.rules_checked == 6
+        assert row.rules_failed == 0

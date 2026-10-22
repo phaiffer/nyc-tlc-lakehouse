@@ -4,10 +4,15 @@ Reuses the same local Spark + embedded Hive metastore configuration as the
 rest of the pipeline, so it reads directly from the existing .local/ warehouse
 without re-running anything.
 
+quality.violations_summary is exported with its complete run history. BI consumers
+must filter or group by dataset, run_id, window_year and window_month before counting
+rules; analytics/examples.sql includes a query that keeps these runs separate.
+
 Usage:
     python scripts/export_for_bi.py
     python scripts/export_for_bi.py --warehouse-dir .local/spark-warehouse --output-dir exports
 """
+
 import argparse
 import os
 import sys

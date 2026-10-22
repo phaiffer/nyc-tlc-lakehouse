@@ -18,28 +18,18 @@ Local Spark + Delta Lakehouse project built as a production-style portfolio impl
 - Reference dimensions:
   - `gold.dim_vendor`, `gold.dim_payment_type`, `gold.dim_rate_code`
 
-```mermaid
-flowchart LR
-    A[Bronze<br/>bronze.events_raw] --> B[Silver<br/>silver.trips_clean]
-    B --> C[Gold<br/>gold.fct_trips_daily + dimensions]
-    C --> D[BI / Dashboards]
-    B --> E[Optional dbt Staging]
-    C --> F[Optional dbt Marts]
-    F --> D
-    G[Contracts<br/>contracts/*.yml] --> A
-    G --> B
-    G --> C
-    H[Quality Gate<br/>violations + quarantine] --> B
-    H --> C
-    I[Drift Monitoring<br/>events + baselines] --> B
-    I --> C
-```
+![Local architecture: TLC Parquet to Bronze, Silver, Gold, quality/drift and BI exports](docs/images/architecture.svg)
 
 ## Quickstart
 
 Supported local flow:
 
 ```bash
+# Use a Spark-compatible interpreter; create the venv before make setup.
+python3.12 -m venv .venv
+# Linux example; point JAVA_HOME at your installed Java 21.
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+export PATH="$JAVA_HOME/bin:$PWD/.venv/bin:$PATH"
 make setup
 make download YEAR=2024 MONTH=1
 make reset
@@ -59,6 +49,134 @@ make demo YEAR=2024 MONTH=1
 - `.local/logs/pipeline_<run_id>.jsonl`
 - `.local/checkpoints/backfill_<run_id>.json`
 - `.local/demo/demo_<run_id>.txt`
+
+## Observed Results: January–February 2024
+
+Local executions using the public monthly TLC **yellow** files. The counts below
+cover each month's pickup window; Bronze applies that window before writing.
+The Gold grain is `trip_date × vendor_id`.
+
+| Measure | January 2024 | February 2024 |
+| --- | ---: | ---: |
+| Bronze: rows in the pickup window | 2,964,606 | 3,007,511 |
+| Silver: cleaned trips | 2,926,167 | 2,965,974 |
+| Gold: aggregated rows | 85 | 58 |
+| Bronze − Silver | 38,439 | 41,537 |
+| Quality rules evaluated | 6 | 6 |
+| Failed rules | 0 | 0 |
+
+![Daily trips by vendor, calculated from the actual Gold output](docs/images/trips_daily.svg)
+
+Cleaning removals are stored in the Silver stage's JSON in
+`quality.pipeline_metrics`. Each row is assigned to its **first rejecting rule**,
+in the order below; duplicates are counted among rows that survived cleaning.
+Missing (`NULL`) fares and distances are rejected. Zero fares and distances pass
+the `>= 0` filters.
+
+| Cleaning rule | January 2024 | February 2024 |
+| --- | ---: | ---: |
+| `missing_pickup_ts` | 0 | 0 |
+| `missing_dropoff_ts` | 0 | 0 |
+| `non_positive_duration` | 870 | 803 |
+| `missing_pickup_date` | 0 | 0 |
+| Negative or missing fare (`negative_or_null_fare`) | 37,443 | 40,653 |
+| Negative or missing distance (`negative_or_null_distance`) | 0 | 0 |
+| `duplicate_trip_id` | 126 | 81 |
+| **Total removed** | **38,439** | **41,537** |
+
+These sums exactly match Bronze − Silver. Additional window exclusions and
+contract rejections were zero in both months; Silver and Gold reconciliations
+also had zero differences. Recording cleaning metrics keeps quarantine dedicated
+to contract violations without persisting another copy of the discarded rows.
+First-rejection counts do not independently count every invalid condition in
+the source.
+
+The gate evaluated dates, duration, fare/distance, duplicates, Gold volume and
+average fare per trip. The default **`warn` mode records gate failures without
+interrupting execution**, including rules with `error` severity.
+`STRICT_QUALITY=1` makes those rules fail the execution; `warn`/`info` rules
+remain informational. Schema, uniqueness and contract rejection-limit checks
+remain active in both modes. Drift events are persisted for observability.
+
+January initialized the Silver and Gold drift baselines. February compared its
+monthly profiles with those baselines: no Silver alert and one Gold
+`volume_ratio` warning, from 85 to 58 aggregated groups (31.76% absolute change).
+Gold volume counts date/vendor groups. Measurements from the actual Gold,
+also recorded in the snapshot, explain the change:
+
+| Month | VendorID | Gold rows / dates | Trips |
+| --- | --- | ---: | ---: |
+| 2024-01 | 1 | 31 | 729,016 |
+| 2024-01 | 2 | 31 | 2,196,943 |
+| 2024-01 | 6 | 23 | 208 |
+| 2024-02 | 1 | 29 | 735,405 |
+| 2024-02 | 2 | 29 | 2,230,569 |
+| 2024-02 | 6 | 0 | 0 |
+
+January has `31 × 2 + 23 = 85` groups; February has `29 × 2 + 0 = 58`.
+The difference consists of fewer calendar days for vendors 1 and 2 and the
+absence of VendorID 6 in February. Cleaned trips increased from 2,926,167 to
+2,965,974, a gain of 39,807 trips. The warning describes calendar coverage and
+vendor composition. The daily chart omits VendorID 6's series and states its
+208 trips for the period in a footnote; totals and evidence still include it.
+
+![Actual layer counts, cleaning removals, quality rules and drift explanation](docs/images/execution_summary.svg)
+
+Reports use the same `run_id` as the Silver/Gold metrics and quality outcomes.
+`quality.violations_summary` retains run history: filter or group by `dataset`,
+`run_id`, `window_year` and `window_month` before counting rules. The
+[severity example](analytics/examples.sql) keeps each run/window separate;
+`scripts/export_for_bi.py` exports the complete history with those keys, and the
+quality notebook counts only its current invocation/window. The optional dbt
+models do not read this table.
+
+Because Bronze is overwritten monthly, reports recover its count from the
+corresponding execution's metrics. Full IDs, source-file hashes, drift profiles,
+rules, per-vendor measurements and the aggregated Gold used in the chart are in
+[showcase_results.json](docs/showcase_results.json).
+
+### Reproduce the Showcase
+
+After creating `.venv` with Python 3.12 and selecting Java 21 as shown in the
+Quickstart, these commands keep caches and outputs local:
+
+```bash
+mkdir -p .local/tmp .local/matplotlib
+export SPARK_LOCAL_IP=127.0.0.1
+export PYSPARK_SUBMIT_ARGS="--conf spark.jars.ivy=$PWD/.local/ivy pyspark-shell"
+export TMPDIR="$PWD/.local/tmp"
+export MPLCONFIGDIR="$PWD/.local/matplotlib"
+PIP_CACHE_DIR="$PWD/.local/pip-cache" make setup
+make download YEAR=2024 MONTH=1
+make download YEAR=2024 MONTH=2
+make reset
+make run YEAR=2024 MONTH=1
+make run YEAR=2024 MONTH=2
+.venv/bin/python scripts/demo_report.py --year 2024 --month 1
+.venv/bin/python scripts/demo_report.py --year 2024 --month 2
+make export-bi EXPORT_DIR=.local/showcase/exports
+.venv/bin/python scripts/render_showcase_assets.py --months 2024-01 2024-02
+```
+
+Reset runs before January. February preserves January's state for incremental
+merges and drift comparison. Silver and Gold accumulate months; quality,
+drift and reconciliation select the monthly window. The renderer checks sums,
+IDs, completion logs, reports and events before rendering. Raw Parquet, Delta
+tables, metastore and exports stay in the ignored `data/raw/` and `.local/`
+directories.
+
+To reproduce only the SVGs from the versioned aggregate snapshot:
+
+```bash
+.venv/bin/python scripts/render_showcase_assets.py --snapshot docs/showcase_results.json
+```
+
+This demonstration covers a two-month sample of yellow taxi data, executed
+locally with embedded Hive. It does not evaluate cloud deployment, distributed
+scale, seasonality or production stability. The optional dbt workflow was not
+executed in this validation. Figures use Portuguese for the Brazilian
+institutional site. The [execution report](docs/SHOWCASE_REPORT.md) records
+commands, results and verification limits.
 
 ## Developer Workflow
 
@@ -93,7 +211,7 @@ make inspect
 - Install dbt plus a compatible adapter (example local adapter):
 
 ```bash
-pip install dbt-core dbt-spark
+.venv/bin/python -m pip install dbt-core dbt-spark
 ```
 
 Run optional dbt targets:
@@ -132,8 +250,11 @@ dbt models built by this project:
 - `gold.dim_payment_type`: payment type lookup.
 - `gold.dim_rate_code`: rate code lookup.
 - `quality.quarantine_records`: contract-invalid rows + reason metadata.
-- `quality.violations_summary`: quality rule pass/fail counts and thresholds.
+- `quality.violations_summary`: append-oriented rule outcomes and thresholds;
+  filter or group by dataset, run ID and monthly window before counting rules.
 - `quality.pipeline_metrics`: structured Silver/Gold run metrics.
+  Silver metrics include `cleaning_summary.removed_by_rule` and `row_accounting`
+  to reconcile input rows, cleaning removals, month exclusions, contract rejections and output rows.
 - `quality.drift_events`: emitted drift alerts by dataset/metric.
 - `quality.drift_baseline_metrics`: baseline profiles used for drift comparison.
 

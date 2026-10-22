@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -58,6 +59,12 @@ def _write_sample_input_parquet(*, spark, output_path: Path) -> None:
             1,
         ),
     ]
+    rows.append(rows[0])
+    invalid = list(rows[1])
+    invalid[2] = invalid[1]
+    invalid[7] = -1.0
+    invalid[8] = Decimal("-1.00")
+    rows.append(tuple(invalid))
     sample_df = spark.createDataFrame(
         rows,
         schema=[
@@ -77,6 +84,7 @@ def _write_sample_input_parquet(*, spark, output_path: Path) -> None:
 
 
 def test_pipeline_smoke_wiring_uses_local_sample_parquet(spark, tmp_path) -> None:
+    run_id = "smoke-shared-pipeline-run"
     input_parquet = tmp_path / "yellow_tripdata_sample.parquet"
     _write_sample_input_parquet(spark=spark, output_path=input_parquet)
 
@@ -88,6 +96,7 @@ def test_pipeline_smoke_wiring_uses_local_sample_parquet(spark, tmp_path) -> Non
             year=None,
             month=None,
             reset=False,
+            run_id=run_id,
         )
         _run_silver(
             spark,
@@ -95,6 +104,7 @@ def test_pipeline_smoke_wiring_uses_local_sample_parquet(spark, tmp_path) -> Non
             year=None,
             month=None,
             reset=False,
+            run_id=run_id,
         )
         _run_gold(
             spark,
@@ -102,6 +112,7 @@ def test_pipeline_smoke_wiring_uses_local_sample_parquet(spark, tmp_path) -> Non
             year=None,
             month=None,
             reset=False,
+            run_id=run_id,
         )
         _run_quality(
             spark,
@@ -110,11 +121,26 @@ def test_pipeline_smoke_wiring_uses_local_sample_parquet(spark, tmp_path) -> Non
             year=None,
             month=None,
             reset=False,
+            run_id=run_id,
         )
 
         required_tables = [BRONZE_TABLE, SILVER_TABLE, GOLD_TABLE, METRICS_TABLE, VIOLATIONS_TABLE]
         for table_name in required_tables:
             assert spark.catalog.tableExists(table_name), f"Expected table to exist: {table_name}"
             assert spark.table(table_name).count() > 0, f"Expected positive rows in: {table_name}"
+        assert {row.run_id for row in spark.table(METRICS_TABLE).collect()} == {run_id}
+        assert {row.run_id for row in spark.table(VIOLATIONS_TABLE).collect()} == {run_id}
+        silver_metrics = next(
+            json.loads(row.metrics_json)
+            for row in spark.table(METRICS_TABLE).collect()
+            if row.dataset == SILVER_TABLE
+        )
+        removals = silver_metrics["cleaning_summary"]["removed_by_rule"]
+        assert removals["non_positive_duration"] == removals["duplicate_trip_id"] == 1
+        assert sum(removals.values()) == (
+            spark.table(BRONZE_TABLE).count() - spark.table(SILVER_TABLE).count()
+        )
+        assert silver_metrics["row_accounting"]["balanced"] is True
+        assert silver_metrics["reconciliation_report"]["passed"] is True
     finally:
         _drop_tables(spark, ALL_TABLES)

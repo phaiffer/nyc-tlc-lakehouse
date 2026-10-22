@@ -87,9 +87,7 @@ def _write_via_sql(
         else:
             # Plain CREATE (no OR REPLACE): the table doesn't exist, so this is a pure CTAS
             # and never touches the buggy Replace/truncate-capability-check exec path.
-            spark.sql(
-                f"CREATE TABLE {quoted_table} USING DELTA AS SELECT * FROM {view_name}"
-            )
+            spark.sql(f"CREATE TABLE {quoted_table} USING DELTA AS SELECT * FROM {view_name}")
     finally:
         spark.catalog.dropTempView(view_name)
 

@@ -1,0 +1,1312 @@
+{
+  "generated_at_utc": "2026-10-22T17:03:32.519334+00:00",
+  "commands": {
+    "export": "make export-bi EXPORT_DIR=.local/showcase/exports",
+    "render": ".venv/bin/python scripts/render_showcase_assets.py --months 2024-01 2024-02"
+  },
+  "versions": {
+    "pyspark": "3.5.9",
+    "delta-spark": "3.2.0",
+    "pandas": "2.2.2",
+    "matplotlib": "3.9.2",
+    "ruff": "0.9.6",
+    "pytest": "8.3.4"
+  },
+  "drift_thresholds": {
+    "silver.trips_clean": {
+      "volume_ratio": {
+        "warn": 0.2,
+        "error": 0.35
+      },
+      "avg_fare_amount_ratio": {
+        "warn": 0.2,
+        "error": 0.35
+      },
+      "avg_trip_distance_ratio": {
+        "warn": 0.2,
+        "error": 0.35
+      },
+      "passenger_distribution_l1": {
+        "warn": 0.15,
+        "error": 0.25
+      }
+    },
+    "gold.fct_trips_daily": {
+      "volume_ratio": {
+        "warn": 0.2,
+        "error": 0.35
+      },
+      "avg_fare_per_trip_ratio": {
+        "warn": 0.2,
+        "error": 0.35
+      }
+    }
+  },
+  "runs": [
+    {
+      "month": "2024-01",
+      "run_id": "ec388ea3-6584-41d8-bfc6-51931ea5b3e1",
+      "report_run_id": "ec388ea3-6584-41d8-bfc6-51931ea5b3e1",
+      "source_file": "yellow_tripdata_2024-01.parquet",
+      "source_sha256": "c4d59da7bbc8abaeeeb1727947ee93d9891a71acb42854bd80db1571b2030510",
+      "pipeline_command": "make run YEAR=2024 MONTH=1",
+      "report_command": ".venv/bin/python scripts/demo_report.py --year 2024 --month 1",
+      "bronze_rows": 2964606,
+      "silver_rows": 2926167,
+      "gold_rows": 85,
+      "removed_by_rule": {
+        "duplicate_trip_id": 126,
+        "missing_dropoff_ts": 0,
+        "missing_pickup_date": 0,
+        "missing_pickup_ts": 0,
+        "negative_or_null_distance": 0,
+        "negative_or_null_fare": 37443,
+        "non_positive_duration": 870
+      },
+      "row_accounting": {
+        "balanced": true,
+        "cleaning_removed_count": 38439,
+        "contract_rejected_count": 0,
+        "input_count": 2964606,
+        "month_window_excluded_count": 0,
+        "output_count": 2926167
+      },
+      "quality_rules": [
+        {
+          "rule_id": "QG001",
+          "rule_name": "invalid_pickup_date_window",
+          "severity": "error",
+          "failed_count": 0,
+          "threshold": 0,
+          "passed": true
+        },
+        {
+          "rule_id": "QG002",
+          "rule_name": "non_positive_trip_duration",
+          "severity": "error",
+          "failed_count": 0,
+          "threshold": 0,
+          "passed": true
+        },
+        {
+          "rule_id": "QG003",
+          "rule_name": "negative_fare_or_distance",
+          "severity": "error",
+          "failed_count": 0,
+          "threshold": 0,
+          "passed": true
+        },
+        {
+          "rule_id": "QG004",
+          "rule_name": "pk_duplicates_detected",
+          "severity": "warn",
+          "failed_count": 0,
+          "threshold": 0,
+          "passed": true
+        },
+        {
+          "rule_id": "QG005",
+          "rule_name": "gold_non_positive_volume",
+          "severity": "error",
+          "failed_count": 0,
+          "threshold": 0,
+          "passed": true
+        },
+        {
+          "rule_id": "QG006",
+          "rule_name": "gold_avg_fare_per_trip_out_of_range",
+          "severity": "error",
+          "failed_count": 0,
+          "threshold": 0,
+          "passed": true
+        }
+      ],
+      "drift_profiles": [
+        {
+          "dataset": "gold.fct_trips_daily",
+          "run_id": "ec388ea3-6584-41d8-bfc6-51931ea5b3e1",
+          "run_ts": 1792677758272,
+          "window_year": 2024,
+          "window_month": 1,
+          "volume": 85,
+          "avg_fare_amount": 18.6449558826,
+          "avg_trip_distance": null,
+          "passenger_distribution_json": "{}"
+        },
+        {
+          "dataset": "silver.trips_clean",
+          "run_id": "ec388ea3-6584-41d8-bfc6-51931ea5b3e1",
+          "run_ts": 1792677758272,
+          "window_year": 2024,
+          "window_month": 1,
+          "volume": 2926167,
+          "avg_fare_amount": 18.644956,
+          "avg_trip_distance": 3.6613995886,
+          "passenger_distribution_json": "{\"0\": 0.01072700225243467, \"1\": 0.7384202610445678, \"2\": 0.1365072465105375, \"3\": 0.030743973259215896, \"4\": 0.017395452822754134, \"5\": 0.011409806754023267, \"6\": 0.007620891083796653, \"7\": 2.7339519583127004e-06, \"8\": 1.7087199739454378e-05, \"9\": 3.4174399478908755e-07, \"__null__\": 0.047155203376977456}"
+        }
+      ],
+      "drift_events": [
+        {
+          "dataset": "gold.fct_trips_daily",
+          "run_id": "ec388ea3-6584-41d8-bfc6-51931ea5b3e1",
+          "run_ts": 1792666987276,
+          "window_year": 2024,
+          "window_month": 1,
+          "event_type": "baseline_initialized",
+          "metric_name": "baseline_initialized",
+          "severity": "info",
+          "baseline_value": null,
+          "observed_value": null,
+          "delta_ratio": null,
+          "warn_threshold": 0.0,
+          "error_threshold": 0.0,
+          "details_json": "{\"note\": \"No prior baseline profile found; drift evaluation starts next run.\"}"
+        },
+        {
+          "dataset": "silver.trips_clean",
+          "run_id": "ec388ea3-6584-41d8-bfc6-51931ea5b3e1",
+          "run_ts": 1792666981852,
+          "window_year": 2024,
+          "window_month": 1,
+          "event_type": "baseline_initialized",
+          "metric_name": "baseline_initialized",
+          "severity": "info",
+          "baseline_value": null,
+          "observed_value": null,
+          "delta_ratio": null,
+          "warn_threshold": 0.0,
+          "error_threshold": 0.0,
+          "details_json": "{\"note\": \"No prior baseline profile found; drift evaluation starts next run.\"}"
+        }
+      ]
+    },
+    {
+      "month": "2024-02",
+      "run_id": "c8920fc2-fadd-491c-b761-80a506b372b5",
+      "report_run_id": "c8920fc2-fadd-491c-b761-80a506b372b5",
+      "source_file": "yellow_tripdata_2024-02.parquet",
+      "source_sha256": "c76c43c18c6c6664080dd920baab4928988d5786a6b65980792ca7cd796f9f20",
+      "pipeline_command": "make run YEAR=2024 MONTH=2",
+      "report_command": ".venv/bin/python scripts/demo_report.py --year 2024 --month 2",
+      "bronze_rows": 3007511,
+      "silver_rows": 2965974,
+      "gold_rows": 58,
+      "removed_by_rule": {
+        "duplicate_trip_id": 81,
+        "missing_dropoff_ts": 0,
+        "missing_pickup_date": 0,
+        "missing_pickup_ts": 0,
+        "negative_or_null_distance": 0,
+        "negative_or_null_fare": 40653,
+        "non_positive_duration": 803
+      },
+      "row_accounting": {
+        "balanced": true,
+        "cleaning_removed_count": 41537,
+        "contract_rejected_count": 0,
+        "input_count": 3007511,
+        "month_window_excluded_count": 0,
+        "output_count": 2965974
+      },
+      "quality_rules": [
+        {
+          "rule_id": "QG001",
+          "rule_name": "invalid_pickup_date_window",
+          "severity": "error",
+          "failed_count": 0,
+          "threshold": 0,
+          "passed": true
+        },
+        {
+          "rule_id": "QG002",
+          "rule_name": "non_positive_trip_duration",
+          "severity": "error",
+          "failed_count": 0,
+          "threshold": 0,
+          "passed": true
+        },
+        {
+          "rule_id": "QG003",
+          "rule_name": "negative_fare_or_distance",
+          "severity": "error",
+          "failed_count": 0,
+          "threshold": 0,
+          "passed": true
+        },
+        {
+          "rule_id": "QG004",
+          "rule_name": "pk_duplicates_detected",
+          "severity": "warn",
+          "failed_count": 0,
+          "threshold": 0,
+          "passed": true
+        },
+        {
+          "rule_id": "QG005",
+          "rule_name": "gold_non_positive_volume",
+          "severity": "error",
+          "failed_count": 0,
+          "threshold": 0,
+          "passed": true
+        },
+        {
+          "rule_id": "QG006",
+          "rule_name": "gold_avg_fare_per_trip_out_of_range",
+          "severity": "error",
+          "failed_count": 0,
+          "threshold": 0,
+          "passed": true
+        }
+      ],
+      "drift_profiles": [
+        {
+          "dataset": "gold.fct_trips_daily",
+          "run_id": "c8920fc2-fadd-491c-b761-80a506b372b5",
+          "run_ts": 1792678559143,
+          "window_year": 2024,
+          "window_month": 2,
+          "volume": 58,
+          "avg_fare_amount": 18.5435419461,
+          "avg_trip_distance": null,
+          "passenger_distribution_json": "{}"
+        },
+        {
+          "dataset": "silver.trips_clean",
+          "run_id": "c8920fc2-fadd-491c-b761-80a506b372b5",
+          "run_ts": 1792678559143,
+          "window_year": 2024,
+          "window_month": 2,
+          "volume": 2965974,
+          "avg_fare_amount": 18.543542,
+          "avg_trip_distance": 3.8739001185,
+          "passenger_distribution_json": "{\"0\": 0.011470430961296357, \"1\": 0.731006408013017, \"2\": 0.1341259228840172, \"3\": 0.028815154819293764, \"4\": 0.015748283700396565, \"5\": 0.010702386467312256, \"6\": 0.007136272941030501, \"8\": 5.057360583740788e-06, \"9\": 1.3486294889975434e-06, \"__null__\": 0.060988734223563656}"
+        }
+      ],
+      "drift_events": [
+        {
+          "dataset": "gold.fct_trips_daily",
+          "run_id": "c8920fc2-fadd-491c-b761-80a506b372b5",
+          "run_ts": 1792667783132,
+          "window_year": 2024,
+          "window_month": 2,
+          "event_type": "drift_detected",
+          "metric_name": "volume_ratio",
+          "severity": "warn",
+          "baseline_value": "85.0",
+          "observed_value": "58.0",
+          "delta_ratio": 0.3176470588,
+          "warn_threshold": 0.2,
+          "error_threshold": 0.35,
+          "details_json": "{\"baseline_run_id\": \"ec388ea3-6584-41d8-bfc6-51931ea5b3e1\"}"
+        }
+      ],
+      "drift_comparisons": [
+        {
+          "dataset": "gold.fct_trips_daily",
+          "metric": "volume_ratio",
+          "baseline_run_id": "ec388ea3-6584-41d8-bfc6-51931ea5b3e1",
+          "baseline_value": 85,
+          "observed_value": 58,
+          "delta_ratio": 0.3176470588235294,
+          "thresholds": {
+            "warn": 0.2,
+            "error": 0.35
+          },
+          "severity": "warn"
+        },
+        {
+          "dataset": "gold.fct_trips_daily",
+          "metric": "avg_fare_per_trip_ratio",
+          "baseline_run_id": "ec388ea3-6584-41d8-bfc6-51931ea5b3e1",
+          "baseline_value": 18.6449558826,
+          "observed_value": 18.5435419461,
+          "delta_ratio": 0.005439215685924165,
+          "thresholds": {
+            "warn": 0.2,
+            "error": 0.35
+          },
+          "severity": null
+        },
+        {
+          "dataset": "silver.trips_clean",
+          "metric": "volume_ratio",
+          "baseline_run_id": "ec388ea3-6584-41d8-bfc6-51931ea5b3e1",
+          "baseline_value": 2926167,
+          "observed_value": 2965974,
+          "delta_ratio": 0.013603803200569208,
+          "thresholds": {
+            "warn": 0.2,
+            "error": 0.35
+          },
+          "severity": null
+        },
+        {
+          "dataset": "silver.trips_clean",
+          "metric": "avg_fare_amount_ratio",
+          "baseline_run_id": "ec388ea3-6584-41d8-bfc6-51931ea5b3e1",
+          "baseline_value": 18.644956,
+          "observed_value": 18.543542,
+          "delta_ratio": 0.0054392190574223875,
+          "thresholds": {
+            "warn": 0.2,
+            "error": 0.35
+          },
+          "severity": null
+        },
+        {
+          "dataset": "silver.trips_clean",
+          "metric": "avg_trip_distance_ratio",
+          "baseline_run_id": "ec388ea3-6584-41d8-bfc6-51931ea5b3e1",
+          "baseline_value": 3.6613995886,
+          "observed_value": 3.8739001185,
+          "delta_ratio": 0.05803806024385693,
+          "thresholds": {
+            "warn": 0.2,
+            "error": 0.35
+          },
+          "severity": null
+        },
+        {
+          "dataset": "silver.trips_clean",
+          "metric": "passenger_distribution_l1",
+          "baseline_run_id": "ec388ea3-6584-41d8-bfc6-51931ea5b3e1",
+          "baseline_value": {
+            "0": 0.01072700225243467,
+            "1": 0.7384202610445678,
+            "2": 0.1365072465105375,
+            "3": 0.030743973259215896,
+            "4": 0.017395452822754134,
+            "5": 0.011409806754023267,
+            "6": 0.007620891083796653,
+            "7": 2.7339519583127004e-06,
+            "8": 1.7087199739454378e-05,
+            "9": 3.4174399478908755e-07,
+            "__null__": 0.047155203376977456
+          },
+          "observed_value": {
+            "0": 0.011470430961296357,
+            "1": 0.731006408013017,
+            "2": 0.1341259228840172,
+            "3": 0.028815154819293764,
+            "4": 0.015748283700396565,
+            "5": 0.010702386467312256,
+            "6": 0.007136272941030501,
+            "8": 5.057360583740788e-06,
+            "9": 1.3486294889975434e-06,
+            "__null__": 0.060988734223563656
+          },
+          "delta_ratio": 0.02915593288188413,
+          "thresholds": {
+            "warn": 0.15,
+            "error": 0.25
+          },
+          "severity": null
+        }
+      ]
+    }
+  ],
+  "gold_daily": [
+    {
+      "trip_date": "2024-01-01",
+      "vendor_id": "1",
+      "trips": 18581,
+      "total_fare": "385584.58"
+    },
+    {
+      "trip_date": "2024-01-01",
+      "vendor_id": "2",
+      "trips": 61088,
+      "total_fare": "1405555.40"
+    },
+    {
+      "trip_date": "2024-01-01",
+      "vendor_id": "6",
+      "trips": 4,
+      "total_fare": "197.12"
+    },
+    {
+      "trip_date": "2024-01-02",
+      "vendor_id": "1",
+      "trips": 19020,
+      "total_fare": "378429.37"
+    },
+    {
+      "trip_date": "2024-01-02",
+      "vendor_id": "2",
+      "trips": 55370,
+      "total_fare": "1225577.26"
+    },
+    {
+      "trip_date": "2024-01-02",
+      "vendor_id": "6",
+      "trips": 10,
+      "total_fare": "540.80"
+    },
+    {
+      "trip_date": "2024-01-03",
+      "vendor_id": "1",
+      "trips": 20829,
+      "total_fare": "395576.33"
+    },
+    {
+      "trip_date": "2024-01-03",
+      "vendor_id": "2",
+      "trips": 60425,
+      "total_fare": "1247850.65"
+    },
+    {
+      "trip_date": "2024-01-03",
+      "vendor_id": "6",
+      "trips": 14,
+      "total_fare": "795.53"
+    },
+    {
+      "trip_date": "2024-01-04",
+      "vendor_id": "1",
+      "trips": 25711,
+      "total_fare": "467365.19"
+    },
+    {
+      "trip_date": "2024-01-04",
+      "vendor_id": "2",
+      "trips": 75864,
+      "total_fare": "1453823.14"
+    },
+    {
+      "trip_date": "2024-01-04",
+      "vendor_id": "6",
+      "trips": 6,
+      "total_fare": "276.78"
+    },
+    {
+      "trip_date": "2024-01-05",
+      "vendor_id": "1",
+      "trips": 25867,
+      "total_fare": "450418.14"
+    },
+    {
+      "trip_date": "2024-01-05",
+      "vendor_id": "2",
+      "trips": 75942,
+      "total_fare": "1413431.21"
+    },
+    {
+      "trip_date": "2024-01-05",
+      "vendor_id": "6",
+      "trips": 5,
+      "total_fare": "244.34"
+    },
+    {
+      "trip_date": "2024-01-06",
+      "vendor_id": "1",
+      "trips": 22530,
+      "total_fare": "370337.75"
+    },
+    {
+      "trip_date": "2024-01-06",
+      "vendor_id": "2",
+      "trips": 73255,
+      "total_fare": "1334033.03"
+    },
+    {
+      "trip_date": "2024-01-06",
+      "vendor_id": "6",
+      "trips": 1,
+      "total_fare": "48.45"
+    },
+    {
+      "trip_date": "2024-01-07",
+      "vendor_id": "1",
+      "trips": 15269,
+      "total_fare": "277099.31"
+    },
+    {
+      "trip_date": "2024-01-07",
+      "vendor_id": "2",
+      "trips": 51273,
+      "total_fare": "1059058.01"
+    },
+    {
+      "trip_date": "2024-01-07",
+      "vendor_id": "6",
+      "trips": 3,
+      "total_fare": "98.11"
+    },
+    {
+      "trip_date": "2024-01-08",
+      "vendor_id": "1",
+      "trips": 20707,
+      "total_fare": "372442.64"
+    },
+    {
+      "trip_date": "2024-01-08",
+      "vendor_id": "2",
+      "trips": 58229,
+      "total_fare": "1144069.13"
+    },
+    {
+      "trip_date": "2024-01-08",
+      "vendor_id": "6",
+      "trips": 14,
+      "total_fare": "669.77"
+    },
+    {
+      "trip_date": "2024-01-09",
+      "vendor_id": "1",
+      "trips": 24047,
+      "total_fare": "399994.08"
+    },
+    {
+      "trip_date": "2024-01-09",
+      "vendor_id": "2",
+      "trips": 68724,
+      "total_fare": "1204476.51"
+    },
+    {
+      "trip_date": "2024-01-09",
+      "vendor_id": "6",
+      "trips": 25,
+      "total_fare": "1367.04"
+    },
+    {
+      "trip_date": "2024-01-10",
+      "vendor_id": "1",
+      "trips": 23981,
+      "total_fare": "417392.20"
+    },
+    {
+      "trip_date": "2024-01-10",
+      "vendor_id": "2",
+      "trips": 69951,
+      "total_fare": "1303749.32"
+    },
+    {
+      "trip_date": "2024-01-10",
+      "vendor_id": "6",
+      "trips": 10,
+      "total_fare": "418.93"
+    },
+    {
+      "trip_date": "2024-01-11",
+      "vendor_id": "1",
+      "trips": 26186,
+      "total_fare": "474763.82"
+    },
+    {
+      "trip_date": "2024-01-11",
+      "vendor_id": "2",
+      "trips": 77559,
+      "total_fare": "1496109.17"
+    },
+    {
+      "trip_date": "2024-01-11",
+      "vendor_id": "6",
+      "trips": 25,
+      "total_fare": "1488.36"
+    },
+    {
+      "trip_date": "2024-01-12",
+      "vendor_id": "1",
+      "trips": 26054,
+      "total_fare": "466577.70"
+    },
+    {
+      "trip_date": "2024-01-12",
+      "vendor_id": "2",
+      "trips": 76328,
+      "total_fare": "1477506.61"
+    },
+    {
+      "trip_date": "2024-01-12",
+      "vendor_id": "6",
+      "trips": 11,
+      "total_fare": "597.42"
+    },
+    {
+      "trip_date": "2024-01-13",
+      "vendor_id": "1",
+      "trips": 24204,
+      "total_fare": "400035.89"
+    },
+    {
+      "trip_date": "2024-01-13",
+      "vendor_id": "2",
+      "trips": 79172,
+      "total_fare": "1434564.38"
+    },
+    {
+      "trip_date": "2024-01-13",
+      "vendor_id": "6",
+      "trips": 4,
+      "total_fare": "174.95"
+    },
+    {
+      "trip_date": "2024-01-14",
+      "vendor_id": "1",
+      "trips": 22020,
+      "total_fare": "370904.21"
+    },
+    {
+      "trip_date": "2024-01-14",
+      "vendor_id": "2",
+      "trips": 71098,
+      "total_fare": "1341190.97"
+    },
+    {
+      "trip_date": "2024-01-14",
+      "vendor_id": "6",
+      "trips": 3,
+      "total_fare": "91.36"
+    },
+    {
+      "trip_date": "2024-01-15",
+      "vendor_id": "1",
+      "trips": 18177,
+      "total_fare": "328620.68"
+    },
+    {
+      "trip_date": "2024-01-15",
+      "vendor_id": "2",
+      "trips": 57887,
+      "total_fare": "1176338.28"
+    },
+    {
+      "trip_date": "2024-01-15",
+      "vendor_id": "6",
+      "trips": 9,
+      "total_fare": "373.25"
+    },
+    {
+      "trip_date": "2024-01-16",
+      "vendor_id": "1",
+      "trips": 22853,
+      "total_fare": "415558.07"
+    },
+    {
+      "trip_date": "2024-01-16",
+      "vendor_id": "2",
+      "trips": 69118,
+      "total_fare": "1387592.82"
+    },
+    {
+      "trip_date": "2024-01-16",
+      "vendor_id": "6",
+      "trips": 10,
+      "total_fare": "409.04"
+    },
+    {
+      "trip_date": "2024-01-17",
+      "vendor_id": "1",
+      "trips": 27432,
+      "total_fare": "488661.69"
+    },
+    {
+      "trip_date": "2024-01-17",
+      "vendor_id": "2",
+      "trips": 81595,
+      "total_fare": "1542078.40"
+    },
+    {
+      "trip_date": "2024-01-17",
+      "vendor_id": "6",
+      "trips": 20,
+      "total_fare": "1048.31"
+    },
+    {
+      "trip_date": "2024-01-18",
+      "vendor_id": "1",
+      "trips": 27311,
+      "total_fare": "485768.62"
+    },
+    {
+      "trip_date": "2024-01-18",
+      "vendor_id": "2",
+      "trips": 81730,
+      "total_fare": "1511669.27"
+    },
+    {
+      "trip_date": "2024-01-18",
+      "vendor_id": "6",
+      "trips": 12,
+      "total_fare": "565.86"
+    },
+    {
+      "trip_date": "2024-01-19",
+      "vendor_id": "1",
+      "trips": 23477,
+      "total_fare": "400374.44"
+    },
+    {
+      "trip_date": "2024-01-19",
+      "vendor_id": "2",
+      "trips": 71218,
+      "total_fare": "1272533.87"
+    },
+    {
+      "trip_date": "2024-01-19",
+      "vendor_id": "6",
+      "trips": 13,
+      "total_fare": "677.23"
+    },
+    {
+      "trip_date": "2024-01-20",
+      "vendor_id": "1",
+      "trips": 24871,
+      "total_fare": "395832.74"
+    },
+    {
+      "trip_date": "2024-01-20",
+      "vendor_id": "2",
+      "trips": 82444,
+      "total_fare": "1410272.03"
+    },
+    {
+      "trip_date": "2024-01-20",
+      "vendor_id": "6",
+      "trips": 3,
+      "total_fare": "129.08"
+    },
+    {
+      "trip_date": "2024-01-21",
+      "vendor_id": "1",
+      "trips": 19612,
+      "total_fare": "340532.05"
+    },
+    {
+      "trip_date": "2024-01-21",
+      "vendor_id": "2",
+      "trips": 63673,
+      "total_fare": "1239502.24"
+    },
+    {
+      "trip_date": "2024-01-21",
+      "vendor_id": "6",
+      "trips": 3,
+      "total_fare": "131.98"
+    },
+    {
+      "trip_date": "2024-01-22",
+      "vendor_id": "1",
+      "trips": 22535,
+      "total_fare": "405144.30"
+    },
+    {
+      "trip_date": "2024-01-22",
+      "vendor_id": "2",
+      "trips": 61966,
+      "total_fare": "1204975.24"
+    },
+    {
+      "trip_date": "2024-01-22",
+      "vendor_id": "6",
+      "trips": 2,
+      "total_fare": "51.75"
+    },
+    {
+      "trip_date": "2024-01-23",
+      "vendor_id": "1",
+      "trips": 25427,
+      "total_fare": "443530.31"
+    },
+    {
+      "trip_date": "2024-01-23",
+      "vendor_id": "2",
+      "trips": 73223,
+      "total_fare": "1342399.97"
+    },
+    {
+      "trip_date": "2024-01-23",
+      "vendor_id": "6",
+      "trips": 1,
+      "total_fare": "52.04"
+    },
+    {
+      "trip_date": "2024-01-24",
+      "vendor_id": "1",
+      "trips": 26494,
+      "total_fare": "460056.36"
+    },
+    {
+      "trip_date": "2024-01-24",
+      "vendor_id": "2",
+      "trips": 77383,
+      "total_fare": "1421059.68"
+    },
+    {
+      "trip_date": "2024-01-25",
+      "vendor_id": "1",
+      "trips": 27989,
+      "total_fare": "498821.47"
+    },
+    {
+      "trip_date": "2024-01-25",
+      "vendor_id": "2",
+      "trips": 81013,
+      "total_fare": "1539771.65"
+    },
+    {
+      "trip_date": "2024-01-26",
+      "vendor_id": "1",
+      "trips": 26818,
+      "total_fare": "473337.89"
+    },
+    {
+      "trip_date": "2024-01-26",
+      "vendor_id": "2",
+      "trips": 77569,
+      "total_fare": "1437273.42"
+    },
+    {
+      "trip_date": "2024-01-27",
+      "vendor_id": "1",
+      "trips": 25925,
+      "total_fare": "420960.08"
+    },
+    {
+      "trip_date": "2024-01-27",
+      "vendor_id": "2",
+      "trips": 83076,
+      "total_fare": "1462161.12"
+    },
+    {
+      "trip_date": "2024-01-28",
+      "vendor_id": "1",
+      "trips": 21717,
+      "total_fare": "370101.69"
+    },
+    {
+      "trip_date": "2024-01-28",
+      "vendor_id": "2",
+      "trips": 69719,
+      "total_fare": "1329943.55"
+    },
+    {
+      "trip_date": "2024-01-29",
+      "vendor_id": "1",
+      "trips": 22093,
+      "total_fare": "401364.41"
+    },
+    {
+      "trip_date": "2024-01-29",
+      "vendor_id": "2",
+      "trips": 61376,
+      "total_fare": "1186856.27"
+    },
+    {
+      "trip_date": "2024-01-30",
+      "vendor_id": "1",
+      "trips": 25639,
+      "total_fare": "440309.27"
+    },
+    {
+      "trip_date": "2024-01-30",
+      "vendor_id": "2",
+      "trips": 74407,
+      "total_fare": "1336056.70"
+    },
+    {
+      "trip_date": "2024-01-31",
+      "vendor_id": "1",
+      "trips": 25640,
+      "total_fare": "445094.31"
+    },
+    {
+      "trip_date": "2024-01-31",
+      "vendor_id": "2",
+      "trips": 75268,
+      "total_fare": "1365338.23"
+    },
+    {
+      "trip_date": "2024-02-01",
+      "vendor_id": "1",
+      "trips": 27281,
+      "total_fare": "486414.56"
+    },
+    {
+      "trip_date": "2024-02-01",
+      "vendor_id": "2",
+      "trips": 81370,
+      "total_fare": "1529006.07"
+    },
+    {
+      "trip_date": "2024-02-02",
+      "vendor_id": "1",
+      "trips": 26636,
+      "total_fare": "459599.89"
+    },
+    {
+      "trip_date": "2024-02-02",
+      "vendor_id": "2",
+      "trips": 77504,
+      "total_fare": "1406531.12"
+    },
+    {
+      "trip_date": "2024-02-03",
+      "vendor_id": "1",
+      "trips": 26115,
+      "total_fare": "412247.73"
+    },
+    {
+      "trip_date": "2024-02-03",
+      "vendor_id": "2",
+      "trips": 83065,
+      "total_fare": "1434254.25"
+    },
+    {
+      "trip_date": "2024-02-04",
+      "vendor_id": "1",
+      "trips": 20582,
+      "total_fare": "356722.81"
+    },
+    {
+      "trip_date": "2024-02-04",
+      "vendor_id": "2",
+      "trips": 66291,
+      "total_fare": "1300508.52"
+    },
+    {
+      "trip_date": "2024-02-05",
+      "vendor_id": "1",
+      "trips": 22826,
+      "total_fare": "407488.13"
+    },
+    {
+      "trip_date": "2024-02-05",
+      "vendor_id": "2",
+      "trips": 64476,
+      "total_fare": "1225962.39"
+    },
+    {
+      "trip_date": "2024-02-06",
+      "vendor_id": "1",
+      "trips": 25668,
+      "total_fare": "448104.61"
+    },
+    {
+      "trip_date": "2024-02-06",
+      "vendor_id": "2",
+      "trips": 75202,
+      "total_fare": "1378933.67"
+    },
+    {
+      "trip_date": "2024-02-07",
+      "vendor_id": "1",
+      "trips": 25678,
+      "total_fare": "466572.91"
+    },
+    {
+      "trip_date": "2024-02-07",
+      "vendor_id": "2",
+      "trips": 76033,
+      "total_fare": "1452841.11"
+    },
+    {
+      "trip_date": "2024-02-08",
+      "vendor_id": "1",
+      "trips": 28512,
+      "total_fare": "516222.15"
+    },
+    {
+      "trip_date": "2024-02-08",
+      "vendor_id": "2",
+      "trips": 84130,
+      "total_fare": "1605753.43"
+    },
+    {
+      "trip_date": "2024-02-09",
+      "vendor_id": "1",
+      "trips": 27612,
+      "total_fare": "493775.50"
+    },
+    {
+      "trip_date": "2024-02-09",
+      "vendor_id": "2",
+      "trips": 81400,
+      "total_fare": "1536332.74"
+    },
+    {
+      "trip_date": "2024-02-10",
+      "vendor_id": "1",
+      "trips": 25746,
+      "total_fare": "428313.66"
+    },
+    {
+      "trip_date": "2024-02-10",
+      "vendor_id": "2",
+      "trips": 84342,
+      "total_fare": "1503080.84"
+    },
+    {
+      "trip_date": "2024-02-11",
+      "vendor_id": "1",
+      "trips": 22276,
+      "total_fare": "387011.49"
+    },
+    {
+      "trip_date": "2024-02-11",
+      "vendor_id": "2",
+      "trips": 72962,
+      "total_fare": "1423732.57"
+    },
+    {
+      "trip_date": "2024-02-12",
+      "vendor_id": "1",
+      "trips": 23204,
+      "total_fare": "418871.81"
+    },
+    {
+      "trip_date": "2024-02-12",
+      "vendor_id": "2",
+      "trips": 67610,
+      "total_fare": "1297862.36"
+    },
+    {
+      "trip_date": "2024-02-13",
+      "vendor_id": "1",
+      "trips": 16411,
+      "total_fare": "253309.25"
+    },
+    {
+      "trip_date": "2024-02-13",
+      "vendor_id": "2",
+      "trips": 51684,
+      "total_fare": "884706.71"
+    },
+    {
+      "trip_date": "2024-02-14",
+      "vendor_id": "1",
+      "trips": 29866,
+      "total_fare": "512420.06"
+    },
+    {
+      "trip_date": "2024-02-14",
+      "vendor_id": "2",
+      "trips": 90274,
+      "total_fare": "1654824.04"
+    },
+    {
+      "trip_date": "2024-02-15",
+      "vendor_id": "1",
+      "trips": 30492,
+      "total_fare": "539594.62"
+    },
+    {
+      "trip_date": "2024-02-15",
+      "vendor_id": "2",
+      "trips": 90747,
+      "total_fare": "1685567.24"
+    },
+    {
+      "trip_date": "2024-02-16",
+      "vendor_id": "1",
+      "trips": 26616,
+      "total_fare": "486064.17"
+    },
+    {
+      "trip_date": "2024-02-16",
+      "vendor_id": "2",
+      "trips": 77607,
+      "total_fare": "1507599.01"
+    },
+    {
+      "trip_date": "2024-02-17",
+      "vendor_id": "1",
+      "trips": 23913,
+      "total_fare": "391199.55"
+    },
+    {
+      "trip_date": "2024-02-17",
+      "vendor_id": "2",
+      "trips": 80112,
+      "total_fare": "1431863.89"
+    },
+    {
+      "trip_date": "2024-02-18",
+      "vendor_id": "1",
+      "trips": 21747,
+      "total_fare": "377746.45"
+    },
+    {
+      "trip_date": "2024-02-18",
+      "vendor_id": "2",
+      "trips": 70450,
+      "total_fare": "1349089.12"
+    },
+    {
+      "trip_date": "2024-02-19",
+      "vendor_id": "1",
+      "trips": 18222,
+      "total_fare": "343604.58"
+    },
+    {
+      "trip_date": "2024-02-19",
+      "vendor_id": "2",
+      "trips": 56733,
+      "total_fare": "1193129.63"
+    },
+    {
+      "trip_date": "2024-02-20",
+      "vendor_id": "1",
+      "trips": 24420,
+      "total_fare": "443328.59"
+    },
+    {
+      "trip_date": "2024-02-20",
+      "vendor_id": "2",
+      "trips": 71447,
+      "total_fare": "1380302.76"
+    },
+    {
+      "trip_date": "2024-02-21",
+      "vendor_id": "1",
+      "trips": 26075,
+      "total_fare": "466162.36"
+    },
+    {
+      "trip_date": "2024-02-21",
+      "vendor_id": "2",
+      "trips": 76161,
+      "total_fare": "1398464.21"
+    },
+    {
+      "trip_date": "2024-02-22",
+      "vendor_id": "1",
+      "trips": 28783,
+      "total_fare": "525750.06"
+    },
+    {
+      "trip_date": "2024-02-22",
+      "vendor_id": "2",
+      "trips": 85336,
+      "total_fare": "1618852.55"
+    },
+    {
+      "trip_date": "2024-02-23",
+      "vendor_id": "1",
+      "trips": 25691,
+      "total_fare": "463018.40"
+    },
+    {
+      "trip_date": "2024-02-23",
+      "vendor_id": "2",
+      "trips": 75352,
+      "total_fare": "1419217.86"
+    },
+    {
+      "trip_date": "2024-02-24",
+      "vendor_id": "1",
+      "trips": 26782,
+      "total_fare": "446912.22"
+    },
+    {
+      "trip_date": "2024-02-24",
+      "vendor_id": "2",
+      "trips": 89346,
+      "total_fare": "1594303.91"
+    },
+    {
+      "trip_date": "2024-02-25",
+      "vendor_id": "1",
+      "trips": 21873,
+      "total_fare": "396365.01"
+    },
+    {
+      "trip_date": "2024-02-25",
+      "vendor_id": "2",
+      "trips": 72391,
+      "total_fare": "1435053.70"
+    },
+    {
+      "trip_date": "2024-02-26",
+      "vendor_id": "1",
+      "trips": 22394,
+      "total_fare": "437768.70"
+    },
+    {
+      "trip_date": "2024-02-26",
+      "vendor_id": "2",
+      "trips": 62683,
+      "total_fare": "1317323.83"
+    },
+    {
+      "trip_date": "2024-02-27",
+      "vendor_id": "1",
+      "trips": 29716,
+      "total_fare": "531042.54"
+    },
+    {
+      "trip_date": "2024-02-27",
+      "vendor_id": "2",
+      "trips": 87125,
+      "total_fare": "1605853.90"
+    },
+    {
+      "trip_date": "2024-02-28",
+      "vendor_id": "1",
+      "trips": 28092,
+      "total_fare": "515970.70"
+    },
+    {
+      "trip_date": "2024-02-28",
+      "vendor_id": "2",
+      "trips": 82883,
+      "total_fare": "1582784.67"
+    },
+    {
+      "trip_date": "2024-02-29",
+      "vendor_id": "1",
+      "trips": 32176,
+      "total_fare": "596889.44"
+    },
+    {
+      "trip_date": "2024-02-29",
+      "vendor_id": "2",
+      "trips": 95853,
+      "total_fare": "1837435.23"
+    }
+  ],
+  "gold_vendor_summary": [
+    {
+      "month": "2024-01",
+      "vendor_id": "1",
+      "gold_rows": 31,
+      "days": 31,
+      "trips": 729016
+    },
+    {
+      "month": "2024-01",
+      "vendor_id": "2",
+      "gold_rows": 31,
+      "days": 31,
+      "trips": 2196943
+    },
+    {
+      "month": "2024-01",
+      "vendor_id": "6",
+      "gold_rows": 23,
+      "days": 23,
+      "trips": 208
+    },
+    {
+      "month": "2024-02",
+      "vendor_id": "1",
+      "gold_rows": 29,
+      "days": 29,
+      "trips": 735405
+    },
+    {
+      "month": "2024-02",
+      "vendor_id": "2",
+      "gold_rows": 29,
+      "days": 29,
+      "trips": 2230569
+    },
+    {
+      "month": "2024-02",
+      "vendor_id": "6",
+      "gold_rows": 0,
+      "days": 0,
+      "trips": 0
+    }
+  ]
+}

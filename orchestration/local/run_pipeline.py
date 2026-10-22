@@ -43,6 +43,7 @@ from pipelines.common.local_delta_writer import (  # noqa: E402
     is_schema_conflict_error,
     write_delta_table_safe,
 )
+from pipelines.common.month_window import filter_month_window  # noqa: E402
 from pipelines.common.schema_normalizer import normalize_bronze_schema  # noqa: E402
 from pipelines.common.structured_logging import JsonPipelineLogger  # noqa: E402
 from pipelines.gold_marts.run_gold_enforced import run_gold_enforced  # noqa: E402
@@ -813,7 +814,9 @@ def _run_quality(
 
     silver_drift_summary = detect_and_record_drift(
         spark,
-        source_df=spark.table(SILVER_TABLE),
+        source_df=filter_month_window(
+            spark.table(SILVER_TABLE), date_column="pickup_date", year=year, month=month
+        ),
         dataset=SILVER_TABLE,
         run_id=effective_run_id,
         run_ts=run_ts,
@@ -828,7 +831,9 @@ def _run_quality(
     )
     gold_drift_summary = detect_and_record_drift(
         spark,
-        source_df=spark.table(GOLD_TABLE),
+        source_df=filter_month_window(
+            spark.table(GOLD_TABLE), date_column="trip_date", year=year, month=month
+        ),
         dataset=GOLD_TABLE,
         run_id=effective_run_id,
         run_ts=run_ts,
@@ -848,8 +853,17 @@ def _run_quality(
     )
 
     print("Quality table ready:", VIOLATIONS_TABLE)
-    quality_rows = spark.table(VIOLATIONS_TABLE).count()
-    print("Quality rows:", quality_rows)
+    quality_rows = (
+        spark.table(VIOLATIONS_TABLE)
+        .filter(
+            (F.col("dataset") == contract.dataset)
+            & (F.col("run_id") == effective_run_id)
+            & F.col("window_year").eqNullSafe(year)
+            & F.col("window_month").eqNullSafe(month)
+        )
+        .count()
+    )
+    print("Quality rows for this run/window:", quality_rows)
     print("Quality summary:", result)
     print("Drift summary (silver):", silver_drift_summary)
     print("Drift summary (gold):", gold_drift_summary)

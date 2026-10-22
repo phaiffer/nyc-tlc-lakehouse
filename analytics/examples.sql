@@ -22,13 +22,18 @@ GROUP BY DATE_TRUNC('month', f.trip_date)
 ORDER BY trip_month;
 
 -- Quality gate outcomes by severity
+-- The table is append-oriented: keep each run and observation window separate.
 SELECT
+  dataset,
+  window_year,
+  window_month,
+  run_id,
   severity,
   COUNT(*) AS rules_checked,
   SUM(CASE WHEN passed THEN 0 ELSE 1 END) AS rules_failed
 FROM quality.violations_summary
-GROUP BY severity
-ORDER BY severity;
+GROUP BY dataset, window_year, window_month, run_id, severity
+ORDER BY dataset, window_year, window_month, run_id, severity;
 
 -- Drift events observed across pipeline runs
 SELECT

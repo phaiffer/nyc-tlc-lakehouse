@@ -21,6 +21,7 @@ from pipelines.common.local_delta_writer import (
     is_schema_conflict_error,
     write_delta_table_safe,
 )
+from pipelines.common.month_window import filter_month_window
 
 _DEFAULT_THRESHOLDS = {
     "invalid_pickup_date_window": 0,
@@ -137,8 +138,12 @@ def run_quality_gate(
 
     resolved_dataset = dataset or silver_table
 
-    silver_df = spark.table(silver_table)
-    gold_df = spark.table(gold_table)
+    silver_df = filter_month_window(
+        spark.table(silver_table), date_column="pickup_date", year=window_year, month=window_month
+    )
+    gold_df = filter_month_window(
+        spark.table(gold_table), date_column="trip_date", year=window_year, month=window_month
+    )
 
     _validate_columns(
         silver_df,
@@ -380,17 +385,17 @@ def run_quality_gate(
     summary_df = summary_df.select(*ordered_columns)
 
     ensure_table_namespace(spark, output_table)
-    if output_table.startswith("quality.") and spark.catalog.tableExists(output_table):
-        # Drop/recreate avoids Hive alterTableDataSchema attempts during overwrite reruns.
-        drop_table_if_exists(spark, output_table)
+    # Preserve each run's rule outcomes so later months cannot erase the evidence
+    # referenced by a pipeline report. A compatible append avoids Hive schema alters.
+    write_mode = "append" if spark.catalog.tableExists(output_table) else "overwrite"
 
     try:
         write_delta_table_safe(
             spark,
             table_name=output_table,
             source_df=summary_df,
-            mode="overwrite",
-            overwrite_schema=True,
+            mode=write_mode,
+            overwrite_schema=(write_mode == "overwrite"),
             recreate_on_schema_conflict=output_table.startswith("quality."),
         )
     except Exception as exc:

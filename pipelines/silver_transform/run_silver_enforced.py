@@ -4,6 +4,7 @@ import uuid
 from dataclasses import asdict
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
@@ -50,9 +51,15 @@ def _stable_float_text(column_name: str, decimals: int):
     )
 
 
-def apply_silver_rules(df: DataFrame) -> DataFrame:
+def apply_silver_rules(
+    df: DataFrame, *, cleaning_metrics: dict[str, Any] | None = None
+) -> DataFrame:
     """
     Build a deterministic canonical Silver model from TLC Bronze rows.
+
+    When requested, count each rejection at its first failing filter, in execution
+    order. Spark filters also reject NULL predicates; count those rejections too.
+    Deduplication is counted only among rows that survived all cleaning filters.
     """
     required_columns = [
         "VendorID",
@@ -90,14 +97,34 @@ def apply_silver_rules(df: DataFrame) -> DataFrame:
         256,
     )
 
+    cleaning_rules = [
+        ("missing_pickup_ts", F.col("pickup_ts").isNotNull()),
+        ("missing_dropoff_ts", F.col("dropoff_ts").isNotNull()),
+        ("non_positive_duration", F.col("dropoff_ts") > F.col("pickup_ts")),
+        ("missing_pickup_date", F.col("pickup_date").isNotNull()),
+        (
+            "negative_or_null_fare",
+            F.col("fare_amount") >= F.lit(Decimal("0.00")).cast(_DECIMAL_18_2),
+        ),
+        ("negative_or_null_distance", F.col("trip_distance") >= F.lit(0.0)),
+    ]
+    first_failure = F.coalesce(
+        *[
+            F.when(~F.coalesce(predicate, F.lit(False)), F.lit(rule_name))
+            for rule_name, predicate in cleaning_rules
+        ]
+    )
+    classified_df = canonical_df.withColumn("__cleaning_reason", first_failure)
+    if cleaning_metrics is not None:
+        counts = {
+            row["__cleaning_reason"]: int(row["count"])
+            for row in classified_df.groupBy("__cleaning_reason").count().collect()
+        }
+        removed_by_rule = {name: counts.get(name, 0) for name, _ in cleaning_rules}
+
     canonical_filtered_df = (
-        canonical_df.withColumn("trip_id", trip_id_expr)
-        .filter(F.col("pickup_ts").isNotNull())
-        .filter(F.col("dropoff_ts").isNotNull())
-        .filter(F.col("dropoff_ts") > F.col("pickup_ts"))
-        .filter(F.col("pickup_date").isNotNull())
-        .filter(F.col("fare_amount") >= F.lit(Decimal("0.00")).cast(_DECIMAL_18_2))
-        .filter(F.col("trip_distance") >= F.lit(0.0))
+        classified_df.filter(F.col("__cleaning_reason").isNull())
+        .withColumn("trip_id", trip_id_expr)
         .select(
             "trip_id",
             "vendor_id",
@@ -121,11 +148,21 @@ def apply_silver_rules(df: DataFrame) -> DataFrame:
         F.col("__stable_tiebreaker").desc(),
     )
 
-    return (
+    deduped_df = (
         with_tie_breaker.withColumn("__row_number", F.row_number().over(dedup_window))
         .filter(F.col("__row_number") == 1)
         .drop("__row_number", "__stable_tiebreaker")
     )
+    if cleaning_metrics is not None:
+        output_count = deduped_df.count()
+        removed_by_rule["duplicate_trip_id"] = counts.get(None, 0) - output_count
+        cleaning_metrics.update(
+            input_count=sum(counts.values()),
+            output_count=output_count,
+            removed_by_rule=removed_by_rule,
+            removed_count=sum(removed_by_rule.values()),
+        )
+    return deduped_df
 
 
 def _apply_month_window(df: DataFrame, *, year: int | None, month: int | None) -> DataFrame:
@@ -170,7 +207,8 @@ def run_silver_enforced(
         raise ValueError("Contract must define late_arrival_days for incremental merge windowing.")
 
     source_df = spark.table(input_table)
-    silver_candidate_df = apply_silver_rules(source_df)
+    cleaning_summary: dict[str, Any] = {}
+    silver_candidate_df = apply_silver_rules(source_df, cleaning_metrics=cleaning_summary)
     silver_candidate_df = _apply_month_window(silver_candidate_df, year=year, month=month)
 
     enforcement = enforce_contract(
@@ -201,12 +239,16 @@ def run_silver_enforced(
     )
 
     reconciliation_source_view = "__silver_reconciliation_source"
+    reconciliation_target_view = "__silver_reconciliation_target"
     enforcement.valid_df.createOrReplaceTempView(reconciliation_source_view)
+    _apply_month_window(spark.table(output_table), year=year, month=month).createOrReplaceTempView(
+        reconciliation_target_view
+    )
     try:
         reconciliation_report = reconcile_row_counts(
             spark,
             source_table=reconciliation_source_view,
-            target_table=output_table,
+            target_table=reconciliation_target_view,
             max_diff_ratio=reconciliation_max_diff_ratio,
             run_id=effective_run_id,
             strict=strict_reconciliation,
@@ -214,8 +256,29 @@ def run_silver_enforced(
     finally:
         if spark.catalog.tableExists(reconciliation_source_view):
             spark.catalog.dropTempView(reconciliation_source_view)
+        spark.catalog.dropTempView(reconciliation_target_view)
 
+    row_accounting = {
+        "input_count": cleaning_summary["input_count"],
+        "cleaning_removed_count": cleaning_summary["removed_count"],
+        "month_window_excluded_count": (
+            cleaning_summary["output_count"] - enforcement.summary["total_count"]
+        ),
+        "contract_rejected_count": enforcement.summary["invalid_count"],
+        "output_count": enforcement.summary["total_count"] - enforcement.summary["invalid_count"],
+    }
+    row_accounting["balanced"] = row_accounting["input_count"] == sum(
+        row_accounting[key]
+        for key in (
+            "cleaning_removed_count",
+            "month_window_excluded_count",
+            "contract_rejected_count",
+            "output_count",
+        )
+    )
     run_metrics = {
+        "cleaning_summary": cleaning_summary,
+        "row_accounting": row_accounting,
         "enforcement_summary": enforcement.summary,
         "quarantine_summary": quarantine_summary,
         "merge_metrics": merge_metrics,
@@ -236,6 +299,8 @@ def run_silver_enforced(
     )
 
     print("Silver enforcement summary:", enforcement.summary)
+    print("Silver cleaning summary:", cleaning_summary)
+    print("Silver row accounting:", row_accounting)
     print("Silver quarantine summary:", quarantine_summary)
     print("Silver merge metrics:", merge_metrics)
     print("Silver reconciliation report:", asdict(reconciliation_report))
